@@ -1,31 +1,31 @@
 import streamlit as st
 import pandas as pd
 
-st.set_page_config(page_title="Monitor de Riesgo Institucional", page_icon="🚦")
+st.set_page_config(page_title="Monitor IRI Nacional", layout="wide")
+st.title("🚦 Monitor de Riesgo Institucional - 200 Organismos")
 
-st.title("🚦 Semáforo de Riesgo Institucional (IRI)")
-st.markdown("---")
+# CARGA DINÁMICA: Lee el CSV de 200 organismos
+try:
+    df = pd.read_csv("data/processed/monitor_completo.csv")
+except:
+    st.error("⚠️ Error: Ejecutá 'python src/motor_analitico.py' primero.")
+    st.stop()
 
-# Simulación de datos basada en el modelo de riesgo
-# IRI = (Financiero * 0.35) + (Contratación * 0.30) + (Operativo * 0.20) + (Datos * 0.15)
-data = {
-    'Organismo': ['Ministerio de Economía', 'Obras Públicas', 'Salud', 'Educación'],
-    'Riesgo Financiero': [20, 80, 45, 10],
-    'Riesgo Contratación': [15, 90, 50, 15],
-    'IRI (Score)': [18.5, 85.0, 47.5, 12.5],
-    'Estado': ['🟢 BAJO', '🔴 ALTO', '🟡 MEDIO', '🟢 BAJO']
-}
-df = pd.DataFrame(data)
-
-# Sidebar para filtros
+# Filtro por Áreas en el Sidebar
 st.sidebar.header("Filtros de Auditoría")
-st.sidebar.selectbox("Seleccionar Organismo", df['Organismo'].unique())
+areas_disponibles = df['Area'].unique().tolist()
+areas_sel = st.sidebar.multiselect("Seleccionar Áreas", areas_disponibles, default=areas_disponibles)
 
-# Visualización Principal
-st.subheader("Visualización de Riesgo por Organismo")
-st.bar_chart(df.set_index('Organismo')['IRI (Score)'])
+# Filtrar y mostrar los 200
+df_filtrado = df[df['Area'].isin(areas_sel)]
 
-st.subheader("Detalle de Alertas")
-st.table(df)
+col1, col2, col3 = st.columns(3)
+col1.metric("Total Organismos", len(df_filtrado))
+col2.metric("Riesgo Promedio", f"{df_filtrado['IRI (Score)'].mean():.1f}")
+col3.metric("Alertas Rojas", len(df_filtrado[df_filtrado['Estado'] == '🔴 ALTO']))
 
-st.info("Nota: Los niveles de riesgo se calculan cruzando datos del Boletín Oficial y Compr.ar.")
+st.subheader("Nivel de Riesgo por Organismo (Top 50)")
+st.bar_chart(df_filtrado.set_index('Organismo')['IRI (Score)'].head(50))
+
+st.subheader("📋 Detalle Completo de Alertas")
+st.dataframe(df_filtrado, use_container_width=True)
