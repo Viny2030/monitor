@@ -2,30 +2,30 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="Monitor IRI Nacional", layout="wide")
-st.title("🚦 Monitor de Riesgo Institucional - 200 Organismos")
+st.title("🚦 Monitor de Riesgo Institucional - Argentina")
 
-# CARGA DINÁMICA: Lee el CSV de 200 organismos
+# Cargar el dataset con nombres reales
 try:
     df = pd.read_csv("data/processed/monitor_completo.csv")
-except:
-    st.error("⚠️ Error: Ejecutá 'python src/motor_analitico.py' primero.")
+except Exception:
+    st.error("⚠️ Ejecutá primero 'python src/motor_analitico.py'")
     st.stop()
 
-# Filtro por Áreas en el Sidebar
+# Sidebar: Filtros por Área
 st.sidebar.header("Filtros de Auditoría")
-areas_disponibles = df['Area'].unique().tolist()
-areas_sel = st.sidebar.multiselect("Seleccionar Áreas", areas_disponibles, default=areas_disponibles)
+areas_sel = st.sidebar.multiselect("Seleccionar Áreas", df['Area'].unique(), default=df['Area'].unique())
 
-# Filtrar y mostrar los 200
+# Filtrar datos
 df_filtrado = df[df['Area'].isin(areas_sel)]
 
-col1, col2, col3 = st.columns(3)
-col1.metric("Total Organismos", len(df_filtrado))
-col2.metric("Riesgo Promedio", f"{df_filtrado['IRI (Score)'].mean():.1f}")
-col3.metric("Alertas Rojas", len(df_filtrado[df_filtrado['Estado'] == '🔴 ALTO']))
+# Métricas
+c1, c2, c3 = st.columns(3)
+c1.metric("Organismos", len(df_filtrado))
+c2.metric("Riesgo Promedio", f"{df_filtrado['IRI (Score)'].mean():.1f}")
+c3.metric("Alertas Rojas", len(df_filtrado[df_filtrado['Estado'] == '🔴 ALTO']))
 
-st.subheader("Nivel de Riesgo por Organismo (Top 50)")
-st.bar_chart(df_filtrado.set_index('Organismo')['IRI (Score)'].head(50))
+st.subheader("Nivel de Riesgo por Organismo (Ranking)")
+st.bar_chart(df_filtrado.set_index('Organismo')['IRI (Score)'])
 
-st.subheader("📋 Detalle Completo de Alertas")
+st.subheader("📋 Detalle de Alertas por Área")
 st.dataframe(df_filtrado, use_container_width=True)
