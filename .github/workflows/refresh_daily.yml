@@ -1,0 +1,51 @@
+name: Refresh diario Monitor IRI
+
+on:
+  schedule:
+    # Todos los días a las 06:00 UTC (03:00 Argentina)
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    # También se puede lanzar manualmente desde la pestaña Actions de GitHub
+
+jobs:
+  refresh:
+    name: Llamar POST /refresh en Railway
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Llamar endpoint /refresh
+        id: call_refresh
+        run: |
+          echo "Llamando a ${{ secrets.MONITOR_URL }}/refresh ..."
+          HTTP_CODE=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X POST \
+            -H "X-Refresh-Token: ${{ secrets.REFRESH_TOKEN }}" \
+            "${{ secrets.MONITOR_URL }}/refresh")
+          echo "HTTP status: $HTTP_CODE"
+          echo "Respuesta:"
+          cat /tmp/response.json
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ Error: el endpoint devolvió $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ Refresh exitoso"
+
+      - name: Verificar dataset actualizado
+        run: |
+          echo "Verificando /resumen ..."
+          curl -sf "${{ secrets.MONITOR_URL }}/resumen" | \
+            python3 -c "
+          import sys, json
+          data = json.load(sys.stdin)
+          g = data['global']
+          print(f\"  Organismos: {g['total_organismos']}\")
+          print(f\"  IRI promedio: {g['iri_promedio_global']}\")
+          print(f\"  🔴 Alto: {g['alto_riesgo']}  🟡 Medio: {g['medio_riesgo']}  🟢 Bajo: {g['bajo_riesgo']}\")
+          "
+
+      - name: Notificar fallo por email (opcional)
+        if: failure()
+        run: |
+          echo "El refresh diario falló. Revisar Railway logs en ${{ secrets.MONITOR_URL }}"
+          # Podés agregar aquí un paso con actions/send-email o un webhook de Slack/Discord
