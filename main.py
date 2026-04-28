@@ -209,6 +209,32 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     .tag-real { color: #4ade80; font-size: 0.7rem; }
     .tag-sint { color: #fbbf24; font-size: 0.7rem; }
 
+    /* === NAV TABS === */
+    .nav-tabs { display: flex; gap: 0; border-bottom: 1px solid #334155; background: #0f172a; padding: 0 1.5rem; }
+    .nav-tab { padding: 0.7rem 1.4rem; font-size: 0.88rem; font-weight: 600; color: #64748b; cursor: pointer; border: none; background: none; border-bottom: 3px solid transparent; transition: all .2s; }
+    .nav-tab:hover { color: #cbd5e1; }
+    .nav-tab.active { color: #60a5fa; border-bottom-color: #3b82f6; }
+    .tab-page { display: none; }
+    .tab-page.active { display: block; }
+
+    /* === MANUAL === */
+    .manual-wrap { padding: 1.5rem; max-width: 860px; }
+    .manual-wrap h2 { font-size: 1.05rem; font-weight: 700; color: #cbd5e1; margin: 1.8rem 0 0.6rem; padding-bottom: 0.3rem; border-bottom: 1px solid #334155; }
+    .manual-wrap h3 { font-size: 0.9rem; font-weight: 700; color: #94a3b8; margin: 1.2rem 0 0.4rem; }
+    .manual-wrap p  { font-size: 0.85rem; color: #94a3b8; line-height: 1.7; margin-bottom: 0.5rem; }
+    .manual-wrap ul { padding-left: 1.4rem; margin-bottom: 0.6rem; }
+    .manual-wrap li { font-size: 0.85rem; color: #94a3b8; line-height: 1.8; }
+    .manual-wrap code { background: #1e293b; color: #7dd3fc; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.82rem; }
+    .manual-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; margin-bottom: 1rem; }
+    .manual-table th { background: #1e293b; color: #94a3b8; text-align: left; padding: 0.55rem 0.75rem; border-bottom: 1px solid #334155; font-weight: 600; }
+    .manual-table td { padding: 0.5rem 0.75rem; border-top: 1px solid #1e293b55; color: #cbd5e1; }
+    .manual-table tr:hover td { background: #1e293b55; }
+    .manual-table td:first-child { color: #60a5fa; font-family: monospace; white-space: nowrap; }
+    .info-box { background: #1e293b; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 0.75rem 1rem; margin: 0.8rem 0; font-size: 0.83rem; color: #94a3b8; line-height: 1.7; }
+    .info-box.warn { border-left-color: #fbbf24; }
+    .info-box.ok   { border-left-color: #4ade80; }
+    .formula-big { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem 1.5rem; text-align: center; font-size: 1rem; font-weight: 700; color: #60a5fa; letter-spacing: .02em; margin: 0.8rem 0; }
+
     /* === NUEVAS SECCIONES === */
     .aviso-banner { margin: 1rem 1.5rem 0; background: #451a03; border: 1px solid #92400e; border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.8rem; color: #fcd34d; display: flex; gap: 0.75rem; align-items: flex-start; }
     .aviso-banner b { color: #fbbf24; }
@@ -259,6 +285,16 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <span>&#x26A0;&#xFE0F;</span>
   <span><b>HERRAMIENTA EXPERIMENTAL Y ACAD&Eacute;MICA.</b> Los datos provienen de fuentes p&uacute;blicas oficiales del Estado argentino. Los resultados son indicadores algor&iacute;tmicos de riesgo &mdash; no implican juicio de valor, acusaci&oacute;n ni determinaci&oacute;n de responsabilidad sobre ninguna empresa, organismo o persona. El objetivo es promover la transparencia y el debate informado sobre el gasto p&uacute;blico.</span>
 </div>
+
+<!-- Nav tabs -->
+<nav class="nav-tabs">
+  <button class="nav-tab active" onclick="showPage('dashboard',this)">&#x1F4CA; Dashboard</button>
+  <button class="nav-tab" onclick="showPage('manual',this)">&#x1F4D6; Manual</button>
+  <button class="nav-tab" onclick="showPage('autor',this)">&#x1F464; Sobre el Autor</button>
+</nav>
+
+<!-- ══════════ TAB: DASHBOARD ══════════ -->
+<div class="tab-page active" id="page-dashboard">
 
 <div id="loader">Cargando datos&#x2026;</div>
 
@@ -350,8 +386,94 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div id="fuentes" style="font-size:0.8rem;color:#94a3b8;line-height:2;"></div>
   </div>
 
-  <div class="section">
-    <h2>&#x1F464; Sobre el Autor</h2>
+</div><!-- /#app -->
+</div><!-- /#page-dashboard -->
+
+<!-- ══════════ TAB: MANUAL ══════════ -->
+<div class="tab-page" id="page-manual">
+<div class="manual-wrap">
+
+  <h2>&#x2139;&#xFE0F; &iquest;Qu&eacute; es el Monitor IRI?</h2>
+  <p>El <b>Monitor de Riesgo Institucional (IRI)</b> es una herramienta acad&eacute;mica de c&oacute;digo abierto que cuantifica niveles de riesgo de corrupci&oacute;n e ineficiencia en organismos del Estado argentino. Combina datos de cinco repositorios especializados para construir un &iacute;ndice compuesto que permite identificar patrones de riesgo en tiempo real.</p>
+
+  <h2>&#x1F9EE; F&oacute;rmula IRI</h2>
+  <div class="formula-big">IRI = R_Financiero &times; 35% &nbsp;+&nbsp; R_Contrataci&oacute;n &times; 30% &nbsp;+&nbsp; R_Operativo &times; 20% &nbsp;+&nbsp; R_Datos &times; 15%</div>
+  <table class="manual-table">
+    <tr><th>Componente</th><th>Peso</th><th>Descripci&oacute;n</th></tr>
+    <tr><td>R_Financiero</td><td>35%</td><td>&Iacute;ndice de fen&oacute;meno corruptivo promedio del flujo BORA&rarr;TGN. En judicial: IRA + tasa de mora procesal.</td></tr>
+    <tr><td>R_Contrataci&oacute;n</td><td>30%</td><td>Proporci&oacute;n de contrataciones directas vs. licitaciones en COMPR.AR / CONTRAT.AR.</td></tr>
+    <tr><td>R_Operativo</td><td>20%</td><td>Inasistencia legislativa (NAPE), tasa de vacancia judicial, participation_pct en el Senado.</td></tr>
+    <tr><td>R_Datos</td><td>15%</td><td>Calidad y disponibilidad de informaci&oacute;n p&uacute;blica publicada por el organismo.</td></tr>
+  </table>
+  <table class="manual-table">
+    <tr><th>Score IRI</th><th>Nivel de riesgo</th></tr>
+    <tr><td>0 &ndash; 29</td><td>&#x1F7E2; BAJO &mdash; dentro de par&aacute;metros normales</td></tr>
+    <tr><td>30 &ndash; 59</td><td>&#x1F7E1; MEDIO &mdash; requiere seguimiento</td></tr>
+    <tr><td>60 &ndash; 100</td><td>&#x1F534; ALTO &mdash; alerta de riesgo institucional</td></tr>
+  </table>
+
+  <h2>&#x1F3D7; Arquitectura &mdash; Repositorios integrados</h2>
+  <table class="manual-table">
+    <tr><th>Repositorio</th><th>Datos que aporta</th></tr>
+    <tr><td>monitor (central)</td><td>FastAPI principal. Dashboard HTML con Plotly.js. Orquesta todos los repos v&iacute;a connector.py.</td></tr>
+    <tr><td>justicia</td><td>IRA por juzgado, vacantes judiciales, magistrados. Endpoint: <code>/operativo/data</code></td></tr>
+    <tr><td>monitor_legistativo</td><td>NAPE, IQP, asistencia, proyectos &mdash; C&aacute;mara de Diputados. Endpoints: <code>/api/kpis</code>, <code>/api/bloques</code></td></tr>
+    <tr><td>monitor_legistativo_senadores</td><td>Participaci&oacute;n, reporte por partido &mdash; Senado. Endpoints: <code>/senado/senadores</code>, <code>/senado/reporte-partido</code></td></tr>
+    <tr><td>monitor_contratos_v2</td><td>BORA + COMPR.AR CKAN + TGN + AFIP SOA. Detecci&oacute;n de fen&oacute;meno corruptivo. Endpoint: <code>/api/licitaciones/datos</code></td></tr>
+    <tr><td>gob_bo_comprar_tgn</td><td>COMPR.AR + Tesorer&iacute;a General de la Naci&oacute;n (ejecuci&oacute;n presupuestaria AR). Endpoint: <code>/api/licitaciones/datos</code></td></tr>
+  </table>
+  <div class="info-box ok">&#x2705; <b>Nota:</b> <code>gob_bo_comprar_tgn</code> NO es un proyecto boliviano. Conecta con la <b>Tesorer&iacute;a General de la Naci&oacute;n de Argentina</b> y con COMPR.AR para el an&aacute;lisis de ejecuci&oacute;n presupuestaria del Ejecutivo Nacional.</div>
+
+  <h2>&#x1F4E6; Estrategia de ingesta</h2>
+  <ul>
+    <li><b>1. Railway API</b> &mdash; si la variable de entorno est&aacute; definida y el servicio responde</li>
+    <li><b>2. GitHub raw</b> &mdash; JSON/CSV directos del repo (siempre disponible como segunda opci&oacute;n)</li>
+    <li><b>3. Fallback sint&eacute;tico</b> &mdash; datos reproducibles con semilla fija (<code>np.random.seed</code>) para garantizar disponibilidad del dashboard</li>
+  </ul>
+
+  <h2>&#x1F511; Variables de entorno</h2>
+  <div class="info-box">Todas son opcionales. Si no est&aacute;n definidas, el sistema usa GitHub raw o fallback sint&eacute;tico autom&aacute;ticamente.</div>
+  <table class="manual-table">
+    <tr><th>Variable</th><th>Descripci&oacute;n</th></tr>
+    <tr><td>JUSTICIA_API_URL</td><td>URL del servicio justicia en Railway</td></tr>
+    <tr><td>LEGISTATIVO_API_URL</td><td>URL del servicio monitor_legistativo (Diputados) en Railway</td></tr>
+    <tr><td>SENADORES_API_URL</td><td>URL del servicio monitor_legistativo_senadores (Senado) en Railway</td></tr>
+    <tr><td>CONTRATOS_AR_API_URL</td><td>URL de monitor_contratos_v2 (BORA + COMPR.AR + TGN AR) en Railway</td></tr>
+    <tr><td>TGN_AR_API_URL</td><td>URL de gob_bo_comprar_tgn (Tesorer&iacute;a General de la Naci&oacute;n AR) en Railway</td></tr>
+    <tr><td>REFRESH_TOKEN</td><td>Token para el endpoint <code>POST /refresh</code> (por defecto: <code>dev</code>)</td></tr>
+  </table>
+  <div class="info-box warn">&#x26A0;&#xFE0F; <b>Atenci&oacute;n:</b> <code>TGN_AR_API_URL</code> reemplaza a <code>CONTRATOS_BO_API_URL</code> usada en versiones anteriores. Si ten&eacute;s la variable vieja configurada en Railway, actualizala.</div>
+
+  <h2>&#x1F680; Instalaci&oacute;n local</h2>
+  <h3>Procfile (Railway)</h3>
+  <div class="info-box"><code>web: uvicorn main:app --host 0.0.0.0 --port $PORT</code></div>
+  <h3>Pasos</h3>
+  <ul>
+    <li><code>git clone https://github.com/Viny2030/monitor.git &amp;&amp; cd monitor</code></li>
+    <li><code>python -m venv .venv &amp;&amp; .venv\Scripts\activate</code></li>
+    <li><code>pip install -r requirements.txt</code></li>
+    <li><code>python motor_analitico.py</code> &mdash; genera <code>data/processed/monitor_completo.csv</code></li>
+    <li><code>uvicorn main:app --reload --port 8000</code></li>
+  </ul>
+
+  <h2>&#x1F4CB; Endpoints de la API</h2>
+  <table class="manual-table">
+    <tr><th>Endpoint</th><th>Descripci&oacute;n</th></tr>
+    <tr><td>GET /dashboard</td><td>Este dashboard</td></tr>
+    <tr><td>GET /datos</td><td>Dataset completo en JSON (acepta ?area= y ?estado=)</td></tr>
+    <tr><td>GET /por-area/{area}</td><td>Organismos filtrados por &aacute;rea</td></tr>
+    <tr><td>GET /top-riesgo?n=10</td><td>Top N organismos de mayor IRI</td></tr>
+    <tr><td>GET /resumen</td><td>Estad&iacute;sticas globales por &aacute;rea</td></tr>
+    <tr><td>POST /refresh</td><td>Regenera el CSV (requiere header <code>X-Refresh-Token</code>)</td></tr>
+    <tr><td>GET /docs</td><td>Documentaci&oacute;n interactiva Swagger UI</td></tr>
+  </table>
+
+</div>
+</div><!-- /#page-manual -->
+
+<!-- ══════════ TAB: SOBRE EL AUTOR ══════════ -->
+<div class="tab-page" id="page-autor">
+  <div class="section" style="max-width:860px;margin-top:1.5rem">
     <div class="autor-card">
       <img class="autor-foto"
            src="https://raw.githubusercontent.com/Viny2030/monitor/main/foto.jpg"
@@ -368,9 +490,35 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         </div>
       </div>
     </div>
-  </div>
 
-</div>
+    <div style="margin-top:2rem">
+      <h2 style="font-size:1rem;font-weight:600;color:#cbd5e1;margin-bottom:1rem">&#x1F49A; Apoyar el proyecto</h2>
+      <p style="font-size:0.83rem;color:#64748b;margin-bottom:1rem">Este portal es software libre y sin publicidad. Tu apoyo permite mantener los servidores activos y mejorar las herramientas de transparencia p&uacute;blica.</p>
+
+      <h3 style="color:#94a3b8;font-size:0.85rem;margin:1rem 0 0.4rem">&#x1F4B2; En Pesos Argentinos (ARS)</h3>
+      <table class="manual-table">
+        <tr><td>CBU</td><td style="font-family:monospace;color:#e2e8f0">0140005203400552652310 <button class="copy-btn" onclick="cp('0140005203400552652310')">copiar</button></td></tr>
+        <tr><td>Alias</td><td style="color:#e2e8f0">ALGORIT.MONTE.PESOS <button class="copy-btn" onclick="cp('ALGORIT.MONTE.PESOS')">copiar</button></td></tr>
+        <tr><td>Titular</td><td style="color:#e2e8f0">Vicente Humberto Monteverde</td></tr>
+      </table>
+
+      <h3 style="color:#94a3b8;font-size:0.85rem;margin:1rem 0 0.4rem">&#x1F4B5; En D&oacute;lares (USD)</h3>
+      <table class="manual-table">
+        <tr><td>CBU</td><td style="font-family:monospace;color:#e2e8f0">0140005204400550329709 <button class="copy-btn" onclick="cp('0140005204400550329709')">copiar</button></td></tr>
+        <tr><td>Alias</td><td style="color:#e2e8f0">ALGO.MONTE.DOLARES <button class="copy-btn" onclick="cp('ALGO.MONTE.DOLARES')">copiar</button></td></tr>
+        <tr><td>Titular</td><td style="color:#e2e8f0">Vicente Humberto Monteverde</td></tr>
+      </table>
+
+      <h3 style="color:#94a3b8;font-size:0.85rem;margin:1rem 0 0.4rem">&#x1F30E; Desde el Exterior</h3>
+      <table class="manual-table">
+        <tr><td>Banco</td><td style="color:#e2e8f0">Banco Santander Montevideo</td></tr>
+        <tr><td>N&uacute;mero de cuenta</td><td style="font-family:monospace;color:#e2e8f0">005200183500 <button class="copy-btn" onclick="cp('005200183500')">copiar</button></td></tr>
+        <tr><td>SWIFT / BIC</td><td style="font-family:monospace;color:#e2e8f0">BSCHUYMM <button class="copy-btn" onclick="cp('BSCHUYMM')">copiar</button></td></tr>
+        <tr><td>Titular</td><td style="color:#e2e8f0">Vicente Humberto Monteverde</td></tr>
+      </table>
+    </div>
+  </div>
+</div><!-- /#page-autor -->
 
 <!-- Modal donacion -->
 <div class="modal-overlay" id="modal-donacion">
@@ -428,6 +576,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </footer>
 
 <script>
+  /* === NAV TABS === */
+  function showPage(name, btn) {
+    document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
+    document.getElementById('page-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+
   let allData = [];
 
   async function loadAll() {
