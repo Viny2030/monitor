@@ -1,0 +1,6 @@
+fastapi
+uvicorn[standard]
+pandas
+httpx
+python-docx
+reportlab
