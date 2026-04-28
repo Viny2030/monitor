@@ -168,7 +168,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     header { background: #1e293b; border-bottom: 1px solid #334155; padding: 1rem 1.5rem; display: flex; align-items: center; gap: 1rem; }
     header h1 { font-size: 1.3rem; font-weight: 700; }
     header span.sub { font-size: 0.8rem; color: #94a3b8; }
-    #refresh-btn { margin-left: auto; background: #3b82f6; border: none; color: white; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+    #refresh-btn { background: #3b82f6; border: none; color: white; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
     #refresh-btn:hover { background: #2563eb; }
     #status { font-size: 0.75rem; color: #94a3b8; margin-left: 0.5rem; }
     .metrics { display: flex; gap: 1rem; padding: 1.2rem 1.5rem; flex-wrap: wrap; }
@@ -208,6 +208,38 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     a { color: #60a5fa; }
     .tag-real { color: #4ade80; font-size: 0.7rem; }
     .tag-sint { color: #fbbf24; font-size: 0.7rem; }
+
+    /* === NUEVAS SECCIONES === */
+    .aviso-banner { margin: 1rem 1.5rem 0; background: #451a03; border: 1px solid #92400e; border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.8rem; color: #fcd34d; display: flex; gap: 0.75rem; align-items: flex-start; }
+    .aviso-banner b { color: #fbbf24; }
+    .autor-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem 2rem; display: flex; gap: 1.5rem; align-items: flex-start; flex-wrap: wrap; }
+    .autor-foto { width: 90px; height: 90px; border-radius: 50%; object-fit: cover; border: 3px solid #334155; flex-shrink: 0; }
+    .autor-info h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 0.2rem; }
+    .autor-info .subtitulo { color: #60a5fa; font-size: 0.82rem; margin-bottom: 0.6rem; }
+    .autor-info p { font-size: 0.82rem; color: #94a3b8; line-height: 1.6; margin-bottom: 0.4rem; }
+    .autor-btns { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.8rem; }
+    .autor-btn { padding: 0.35rem 0.85rem; border-radius: 6px; font-size: 0.78rem; font-weight: 600; text-decoration: none; border: none; cursor: pointer; color: white; }
+    .btn-blue { background: #1d4ed8; }
+    .btn-green { background: #15803d; }
+    .btn-gray { background: #334155; }
+    .apoyar-btn { background: #15803d; border: none; color: white; padding: 0.4rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 600; margin-left: auto; }
+    .apoyar-btn:hover { background: #16a34a; }
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 1000; align-items: center; justify-content: center; }
+    .modal-overlay.active { display: flex; }
+    .modal-box { background: #1e293b; border: 1px solid #334155; border-radius: 14px; padding: 2rem; width: min(500px, 95vw); position: relative; }
+    .modal-close { position: absolute; top: 1rem; right: 1rem; background: none; border: none; color: #94a3b8; font-size: 1.4rem; cursor: pointer; line-height: 1; }
+    .modal-close:hover { color: #e2e8f0; }
+    .tab-btns { display: flex; gap: 0.5rem; margin: 1.2rem 0; }
+    .tab-btn { flex: 1; padding: 0.5rem; border-radius: 8px; border: 1px solid #334155; background: #0f172a; color: #94a3b8; cursor: pointer; font-size: 0.85rem; }
+    .tab-btn.active { border-color: #22c55e; color: #22c55e; background: #052e16; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .don-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    .don-table td { padding: 0.55rem 0.5rem; border-top: 1px solid #334155; }
+    .don-table td:first-child { color: #64748b; }
+    .don-table td:nth-child(2) { color: #e2e8f0; font-weight: 600; font-family: monospace; }
+    .copy-btn { background: #1e293b; border: 1px solid #334155; color: #60a5fa; padding: 0.2rem 0.6rem; border-radius: 5px; cursor: pointer; font-size: 0.75rem; }
+    .copy-btn:active { background: #22c55e; color: white; }
   </style>
 </head>
 <body>
@@ -218,9 +250,15 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <h1>Monitor de Riesgo Institucional (IRI)</h1>
     <span class="sub">Argentina &middot; Semaforo de integridad publica &middot; v2.0</span>
   </div>
+  <button class="apoyar-btn" onclick="openModal()">&#x1F49A; Apoyar</button>
   <button id="refresh-btn" onclick="loadAll()">&#x21BA; Actualizar</button>
   <span id="status"></span>
 </header>
+
+<div class="aviso-banner">
+  <span>&#x26A0;&#xFE0F;</span>
+  <span><b>HERRAMIENTA EXPERIMENTAL Y ACAD&Eacute;MICA.</b> Los datos provienen de fuentes p&uacute;blicas oficiales del Estado argentino. Los resultados son indicadores algor&iacute;tmicos de riesgo &mdash; no implican juicio de valor, acusaci&oacute;n ni determinaci&oacute;n de responsabilidad sobre ninguna empresa, organismo o persona. El objetivo es promover la transparencia y el debate informado sobre el gasto p&uacute;blico.</span>
+</div>
 
 <div id="loader">Cargando datos&#x2026;</div>
 
@@ -312,6 +350,75 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div id="fuentes" style="font-size:0.8rem;color:#94a3b8;line-height:2;"></div>
   </div>
 
+  <div class="section">
+    <h2>&#x1F464; Sobre el Autor</h2>
+    <div class="autor-card">
+      <img class="autor-foto"
+           src="https://raw.githubusercontent.com/Viny2030/monitor/main/foto.jpg"
+           alt="Ph.D. Vicente Humberto Monteverde"/>
+      <div class="autor-info">
+        <h3>Ph.D. Vicente Humberto Monteverde</h3>
+        <div class="subtitulo">Doctor en Ciencias Econ&oacute;micas &middot; Investigador en Transparencia P&uacute;blica</div>
+        <p>Investigador en econom&iacute;a pol&iacute;tica y fen&oacute;menos de corrupci&oacute;n. Autor de la teor&iacute;a de <em>Transferencia Regresiva de Ingresos</em> y desarrollador del algoritmo XAI aplicado al an&aacute;lisis de contrataciones p&uacute;blicas.</p>
+        <p>Publicaciones en <em>Journal of Financial Crime</em> (Emerald Publishing). Asesor en transparencia y auditor&iacute;a algor&iacute;tmica del gasto p&uacute;blico.</p>
+        <div class="autor-btns">
+          <a class="autor-btn btn-blue" href="mailto:vhmonte@retina.ar">&#x2709; vhmonte@retina.ar</a>
+          <a class="autor-btn btn-green" href="mailto:viny01958@gmail.com">&#x2709; viny01958@gmail.com</a>
+          <a class="autor-btn btn-gray" href="https://github.com/Viny2030" target="_blank">&#x1F4BB; github.com/Viny2030</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Modal donacion -->
+<div class="modal-overlay" id="modal-donacion">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeModal()">&#x2715;</button>
+    <div style="font-size:1.3rem;font-weight:700;margin-bottom:0.4rem">&#x1F49A; Apoyar el Monitor IRI</div>
+    <p style="font-size:0.85rem;color:#94a3b8;line-height:1.6">Este portal es software libre y sin publicidad. Tu apoyo permite mantener los scrapers activos y mejorar las herramientas de transparencia.</p>
+    <div class="tab-btns">
+      <button class="tab-btn active" onclick="switchTab('pesos',this)">AR Pesos</button>
+      <button class="tab-btn" onclick="switchTab('dolares',this)">&#x1F4B5; D&oacute;lares</button>
+      <button class="tab-btn" onclick="switchTab('exterior',this)">&#x1F30E; Exterior</button>
+    </div>
+
+    <div class="tab-panel active" id="tab-pesos">
+      <p style="font-size:0.78rem;font-weight:600;color:#94a3b8;margin-bottom:0.5rem;letter-spacing:.05em">TRANSFERENCIA EN PESOS</p>
+      <table class="don-table">
+        <tr><td>Tipo</td><td>Caja Ahorro Pesos</td><td><button class="copy-btn" onclick="cp('Caja Ahorro Pesos')">copiar</button></td></tr>
+        <tr><td>CBU</td><td>0140005203400552652310</td><td><button class="copy-btn" onclick="cp('0140005203400552652310')">copiar</button></td></tr>
+        <tr><td>Alias</td><td>ALGORIT.MONTE.PESOS</td><td><button class="copy-btn" onclick="cp('ALGORIT.MONTE.PESOS')">copiar</button></td></tr>
+        <tr><td>Titular</td><td>Vicente Humberto Monteverde</td><td><button class="copy-btn" onclick="cp('Vicente Humberto Monteverde')">copiar</button></td></tr>
+      </table>
+    </div>
+
+    <div class="tab-panel" id="tab-dolares">
+      <p style="font-size:0.78rem;font-weight:600;color:#94a3b8;margin-bottom:0.5rem;letter-spacing:.05em">TRANSFERENCIA EN D&Oacute;LARES</p>
+      <table class="don-table">
+        <tr><td>Tipo</td><td>Caja Ahorro D&oacute;lares</td><td><button class="copy-btn" onclick="cp('Caja Ahorro Dólares')">copiar</button></td></tr>
+        <tr><td>CBU</td><td>0140005204400550329709</td><td><button class="copy-btn" onclick="cp('0140005204400550329709')">copiar</button></td></tr>
+        <tr><td>Alias</td><td>ALGO.MONTE.DOLARES</td><td><button class="copy-btn" onclick="cp('ALGO.MONTE.DOLARES')">copiar</button></td></tr>
+        <tr><td>Titular</td><td>Vicente Humberto Monteverde</td><td><button class="copy-btn" onclick="cp('Vicente Humberto Monteverde')">copiar</button></td></tr>
+      </table>
+    </div>
+
+    <div class="tab-panel" id="tab-exterior">
+      <p style="font-size:0.78rem;font-weight:600;color:#94a3b8;margin-bottom:0.5rem;letter-spacing:.05em">DESDE EL EXTERIOR</p>
+      <table class="don-table">
+        <tr><td>Banco</td><td>Banco Santander Montevideo</td><td><button class="copy-btn" onclick="cp('Banco Santander Montevideo')">copiar</button></td></tr>
+        <tr><td>Titular</td><td>Vicente Humberto Monteverde</td><td><button class="copy-btn" onclick="cp('Vicente Humberto Monteverde')">copiar</button></td></tr>
+        <tr><td>Cuenta</td><td>Caja de Ahorro en D&oacute;lares</td><td></td></tr>
+        <tr><td>N&uacute;mero</td><td>005200183500</td><td><button class="copy-btn" onclick="cp('005200183500')">copiar</button></td></tr>
+        <tr><td>SWIFT</td><td>BSCHUYMM</td><td><button class="copy-btn" onclick="cp('BSCHUYMM')">copiar</button></td></tr>
+      </table>
+    </div>
+
+    <p style="font-size:0.75rem;color:#475569;margin-top:1.2rem;text-align:center">
+      Proyecto open source &middot; <a href="https://github.com/Viny2030" target="_blank">github.com/Viny2030</a>
+    </p>
+  </div>
 </div>
 
 <footer>
@@ -393,7 +500,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     if (f.includes('senadores'))           return '✅ Senadores';
     if (f.includes('monitor_legistativo')) return '✅ Legislativo';
     if (f.includes('justicia'))            return '✅ Justicia';
-    if (f.includes('fallback'))            return 'ὐ4 Fallback';
+    if (f.includes('fallback'))            return '↩ Fallback';
     return f.split('/')[0] || '-';
   }
 
@@ -481,6 +588,22 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       const icon = k.includes('sintetico') ? '⚠️' : '✅';
       return `<span style="margin-right:2rem">${icon} <code style="color:#7dd3fc">${k}</code> &rarr; <b>${v}</b> organismos</span>`;
     }).join('');
+  }
+
+  /* === MODAL DONACION === */
+  function openModal()  { document.getElementById('modal-donacion').classList.add('active'); }
+  function closeModal() { document.getElementById('modal-donacion').classList.remove('active'); }
+  document.getElementById('modal-donacion').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+  function switchTab(name, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+  function cp(text) {
+    navigator.clipboard.writeText(text).catch(() => {});
   }
 
   loadAll();
