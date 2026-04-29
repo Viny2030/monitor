@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Monitor de Transparencia · Hub Central</title>
+<style>
+:root {
+  --bg:      #f0f4ff;
+  --surface: #ffffff;
+  --border:  #e2e8f0;
+  --text:    #1e293b;
+  --muted:   #64748b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+
+/* ── Header ── */
+header {
+  background: #1e40af;
+  padding: 20px 40px;
+  display: flex; align-items: center; gap: 16px;
+}
+.hlogo {
+  width: 42px; height: 42px; border-radius: 10px;
+  background: #ffffff20; display: flex; align-items: center;
+  justify-content: center; flex-shrink: 0;
+}
+header h1 { font-size: 17px; font-weight: 800; color: #fff; }
+header .sub { font-size: 12px; color: #bfdbfe; margin-top: 2px; }
+.don-btn { margin-left: auto; background: #059669; color: #fff; border: none; border-radius: 99px; padding: 6px 16px; font-size: 12px; font-weight: 800; cursor: pointer; white-space: nowrap; }
+.don-btn:hover { background: #047857; }
+
+/* ── Hero ── */
+.hero { text-align: center; padding: 48px 40px 32px; }
+.hero h2 { font-size: 24px; font-weight: 800; margin-bottom: 10px; line-height: 1.3; }
+.hero p  { font-size: 14px; color: var(--muted); max-width: 580px; margin: 0 auto; line-height: 1.7; }
+
+/* ── Stats globales ── */
+.global-stats {
+  background: #1e40af08; border: 1px solid #1e40af18;
+  border-radius: 12px; margin: 0 40px 40px;
+  max-width: 1100px; width: calc(100% - 80px);
+  align-self: center;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  overflow: hidden;
+}
+.gstat { padding: 16px 20px; text-align: center; border-right: 1px solid #1e40af18; }
+.gstat:last-child { border-right: none; }
+.gstat-val { font-size: 22px; font-weight: 800; color: #1e40af; }
+.gstat-lbl { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+/* ── Sección título ── */
+.section-label {
+  max-width: 1140px; width: calc(100% - 80px);
+  align-self: center; margin: 0 40px 12px;
+  font-size: 10px; font-weight: 800; color: var(--muted);
+  letter-spacing: .08em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 10px;
+}
+.section-label::after { content: ''; flex: 1; height: 1px; background: var(--border); }
+
+/* ── Cards ── */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: 20px; padding: 0 40px 20px;
+  max-width: 1180px; margin: 0 auto; width: 100%;
+}
+.card {
+  background: var(--surface); border-radius: 16px;
+  border: 1px solid var(--border); box-shadow: 0 2px 8px #0001;
+  overflow: hidden; text-decoration: none; color: inherit;
+  transition: transform .15s, box-shadow .15s;
+  display: flex; flex-direction: column;
+  position: relative;
+}
+.card:hover { transform: translateY(-3px); box-shadow: 0 8px 24px #0002; }
+.card.pendiente { opacity: .78; }
+
+.badge-status {
+  position: absolute; top: 12px; right: 12px;
+  font-size: 9px; font-weight: 800; padding: 3px 8px;
+  border-radius: 99px; letter-spacing: .04em;
+}
+.badge-live    { background: #dcfce7; color: #15803d; }
+.badge-pending { background: #fef3c7; color: #92400e; }
+
+.card-header { padding: 22px 22px 16px; display: flex; align-items: flex-start; gap: 14px; }
+.card-icon {
+  width: 46px; height: 46px; border-radius: 12px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 900; color: #fff; flex-shrink: 0;
+}
+.card-title { font-size: 14px; font-weight: 800; margin-bottom: 3px; }
+.card-sub   { font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+.card-stats {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  border-top: 1px solid var(--border);
+}
+.stat { padding: 12px 14px; text-align: center; border-right: 1px solid var(--border); }
+.stat:last-child { border-right: none; }
+.stat-val { font-size: 18px; font-weight: 800; line-height: 1; margin-bottom: 3px; }
+.stat-lbl { font-size: 10px; color: var(--muted); font-weight: 600; text-transform: uppercase; }
+
+.card-sections { padding: 0 22px 14px; display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.section-item {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: var(--muted); padding: 5px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+.section-item:last-child { border-bottom: none; }
+.section-item .icon { font-size: 13px; width: 18px; text-align: center; }
+.section-item .lbl  { flex: 1; }
+.tag-ready   { font-size: 9px; background: #dcfce7; color: #15803d; border-radius: 99px; padding: 1px 7px; font-weight: 700; }
+.tag-coming  { font-size: 9px; background: #f1f5f9; color: #94a3b8; border-radius: 99px; padding: 1px 7px; font-weight: 600; }
+.tag-pending { font-size: 9px; background: #fef9c3; color: #92400e; border-radius: 99px; padding: 1px 7px; font-weight: 700; }
+
+.card-footer {
+  padding: 12px 22px;
+  display: flex; align-items: center; justify-content: space-between;
+  border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted); background: #fafbfd;
+}
+.card-footer .ver { font-size: 12px; font-weight: 700; display: flex; align-items: center; gap: 4px; }
+
+/* Colores por rama */
+.rama-jgm   .card-icon { background: #1e40af; }
+.rama-jgm   .stat-val  { color: #1e40af; }
+.rama-jgm   .ver       { color: #1e40af; }
+.rama-jgm:hover        { border-color: #1e40af44; }
+
+.rama-sgp   .card-icon { background: #7c3aed; }
+.rama-sgp   .stat-val  { color: #7c3aed; }
+.rama-sgp   .ver       { color: #7c3aed; }
+.rama-sgp:hover        { border-color: #7c3aed44; }
+
+.rama-pres  .card-icon { background: #0891b2; }
+.rama-pres  .stat-val  { color: #0891b2; }
+.rama-pres  .ver       { color: #0891b2; }
+.rama-pres:hover       { border-color: #0891b244; }
+
+.rama-leg   .card-icon { background: #047857; }
+.rama-leg   .stat-val  { color: #047857; }
+.rama-leg   .ver       { color: #047857; }
+.rama-leg:hover        { border-color: #04785744; }
+
+.rama-sen   .card-icon { background: #0f766e; }
+.rama-sen   .stat-val  { color: #0f766e; }
+.rama-sen   .ver       { color: #0f766e; }
+.rama-sen:hover        { border-color: #0f766e44; }
+
+.rama-cont  .card-icon { background: #b45309; }
+.rama-cont  .stat-val  { color: #b45309; }
+.rama-cont  .ver       { color: #b45309; }
+.rama-cont:hover       { border-color: #b4530944; }
+
+.rama-bo    .card-icon { background: #c2410c; }
+.rama-bo    .stat-val  { color: #c2410c; }
+.rama-bo    .ver       { color: #c2410c; }
+.rama-bo:hover         { border-color: #c2410c44; }
+
+.rama-hub   .card-icon { background: #4338ca; }
+.rama-hub   .stat-val  { color: #4338ca; }
+.rama-hub   .ver       { color: #4338ca; }
+.rama-hub:hover        { border-color: #4338ca44; }
+
+.rama-jus   .card-icon { background: #9f1239; }
+.rama-jus   .stat-val  { color: #9f1239; }
+.rama-jus   .ver       { color: #9f1239; }
+.rama-jus:hover        { border-color: #9f123944; }
+
+/* ── Modal donación ── */
+.don-overlay { display:none;position:fixed;inset:0;background:#00000066;z-index:9999;align-items:center;justify-content:center; }
+.don-overlay.open { display:flex; }
+.don-modal { background:#fff;border-radius:16px;padding:28px;width:100%;max-width:420px;margin:20px;box-shadow:0 20px 60px #0003;position:relative; }
+.don-close { position:absolute;top:14px;right:16px;background:none;border:none;font-size:22px;cursor:pointer;color:#64748b; }
+.don-modal h2 { font-size:17px;font-weight:800;margin-bottom:4px; }
+.don-modal .sub { font-size:12px;color:#64748b;margin-bottom:20px;line-height:1.5; }
+.don-opciones { display:flex;gap:8px;margin-bottom:20px; }
+.don-op { flex:1;padding:10px 8px;border:2px solid #e2e8f0;border-radius:10px;background:#f8fafc;cursor:pointer;text-align:center;font-size:12px;font-weight:600;color:#64748b;transition:all .15s; }
+.don-op.active { border-color:#059669;background:#ecfdf5;color:#059669; }
+.don-datos { display:none;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:16px; }
+.don-datos.visible { display:block; }
+.don-datos h3 { font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px; }
+.don-fila { display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:12px; }
+.don-fila:last-child { border-bottom:none; }
+.don-fila .lbl { color:#64748b; }
+.don-fila .val { font-weight:700;font-family:monospace;font-size:11px; }
+.don-copy { background:none;border:1px solid #e2e8f0;border-radius:5px;padding:2px 8px;font-size:10px;cursor:pointer;color:#64748b;margin-left:8px; }
+.don-copy.copiado { background:#dcfce7;color:#059669;border-color:#a7f3d0; }
+.don-nota { font-size:11px;color:#64748b;line-height:1.6;text-align:center; }
+
+footer {
+  margin-top: auto; text-align: center; padding: 20px;
+  font-size: 11px; color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+footer a { color: #1e40af; text-decoration: none; }
+
+@media (max-width: 700px) {
+  header { padding: 16px 20px; }
+  .hero  { padding: 28px 20px 20px; }
+  .cards { padding: 0 16px 24px; gap: 14px; }
+  .global-stats { margin: 0 16px 28px; width: calc(100% - 32px); }
+  .section-label { margin: 0 16px 10px; width: calc(100% - 32px); }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="hlogo">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/>
+    </svg>
+  </div>
+  <div>
+    <h1>Monitor de Transparencia · Hub Central</h1>
+    <div class="sub">República Argentina · Datos abiertos · Actualización diaria</div>
+  </div>
+  <button class="don-btn" onclick="abrirDonacion()">💚 Apoyar</button>
+</header>
+
+<!-- Hero -->
+<div class="hero">
+  <h2>Transparencia del Estado en un solo lugar</h2>
+  <p>Monitoreo de contratos, eficiencia legislativa, justicia y compras públicas.<br>
+     Seleccioná un módulo para explorar sus datos.</p>
+</div>
+
+<!-- Stats globales -->
+<div class="global-stats">
+  <div class="gstat"><div class="gstat-val">1.154</div><div class="gstat-lbl">Autoridades monitoreadas</div></div>
+  <div class="gstat"><div class="gstat-val">1.839</div><div class="gstat-lbl">Contratos registrados</div></div>
+  <div class="gstat"><div class="gstat-val">$3.8B</div><div class="gstat-lbl">ARS adjudicados</div></div>
+  <div class="gstat"><div class="gstat-val">329</div><div class="gstat-lbl">Legisladores monitoreados</div></div>
+  <div class="gstat"><div class="gstat-val">12</div><div class="gstat-lbl">Indicadores legislativos</div></div>
+  <div class="gstat"><div class="gstat-val">7</div><div class="gstat-lbl">Módulos activos</div></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SECCIÓN 1 — PODER EJECUTIVO
+════════════════════════════════════════════════ -->
+<div class="section-label">Poder Ejecutivo Nacional</div>
+<div class="cards">
+
+  <!-- JGM -->
+  <a href="https://jefaturagabinete-production.up.railway.app/jgm.html" target="_blank" class="card rama-jgm">
+    <span class="badge-status badge-live">● LIVE</span>
+    <div class="card-header">
+      <div class="card-icon">JGM</div>
+      <div>
+        <div class="card-title">Jefatura de Gabinete de Ministros</div>
+        <div class="card-sub">Jefe actual: Manuel Adorni · desde nov 2025</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">611</div><div class="stat-lbl">Autoridades</div></div>
+      <div class="stat"><div class="stat-val">359</div><div class="stat-lbl">Contratos</div></div>
+      <div class="stat"><div class="stat-val">$1.4B</div><div class="stat-lbl">ARS</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">📋</span><span class="lbl">Contratos y adjudicaciones</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">👥</span><span class="lbl">Personal — cargo y categoría</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🔗</span><span class="lbl">Cruces y alertas</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🏛</span><span class="lbl">Organigrama</span><span class="tag-coming">próximamente</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Gestiones: Posse · Francos · Adorni</span>
+      <span class="ver">Ver JGM →</span>
+    </div>
+  </a>
+
+  <!-- SGP -->
+  <a href="https://jefaturagabinete-production.up.railway.app/sgp.html" target="_blank" class="card rama-sgp">
+    <span class="badge-status badge-live">● LIVE</span>
+    <div class="card-header">
+      <div class="card-icon">SGP</div>
+      <div>
+        <div class="card-title">Secretaría General de la Presidencia</div>
+        <div class="card-sub">Dependencia directa de Presidencia de la Nación</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">144</div><div class="stat-lbl">Autoridades</div></div>
+      <div class="stat"><div class="stat-val">436</div><div class="stat-lbl">Contratos</div></div>
+      <div class="stat"><div class="stat-val">$909M</div><div class="stat-lbl">ARS</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">📋</span><span class="lbl">Contratos y adjudicaciones</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">👥</span><span class="lbl">Personal — cargo y categoría</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🔗</span><span class="lbl">Cruces y alertas</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">📜</span><span class="lbl">Decretos y normativa</span><span class="tag-coming">próximamente</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Sub-organismo de Presidencia de la Nación</span>
+      <span class="ver">Ver SGP →</span>
+    </div>
+  </a>
+
+  <!-- Presidencia -->
+  <a href="https://jefaturagabinete-production.up.railway.app/presidencia.html" target="_blank" class="card rama-pres">
+    <span class="badge-status badge-live">● LIVE</span>
+    <div class="card-header">
+      <div class="card-icon">PNA</div>
+      <div>
+        <div class="card-title">Presidencia de la Nación</div>
+        <div class="card-sub">Cultura · Legal y Técnica · SIGEN · otros organismos</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">399</div><div class="stat-lbl">Autoridades</div></div>
+      <div class="stat"><div class="stat-val">1.044</div><div class="stat-lbl">Contratos</div></div>
+      <div class="stat"><div class="stat-val">$1.5B</div><div class="stat-lbl">ARS</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">📋</span><span class="lbl">Contratos y adjudicaciones</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">👥</span><span class="lbl">Personal — cargo y categoría</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🔗</span><span class="lbl">Cruces y alertas</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🔍</span><span class="lbl">SIGEN — auditorías</span><span class="tag-coming">próximamente</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Sec. de Cultura · Legal y Técnica · más</span>
+      <span class="ver">Ver Presidencia →</span>
+    </div>
+  </a>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SECCIÓN 2 — PODER LEGISLATIVO
+════════════════════════════════════════════════ -->
+<div class="section-label" style="margin-top: 24px;">Poder Legislativo</div>
+<div class="cards">
+
+  <!-- Monitor Legislativo HCDN -->
+  <a href="https://monitorlegistativo-production.up.railway.app/dashboard/" target="_blank" class="card rama-leg">
+    <span class="badge-status badge-live">● LIVE</span>
+    <div class="card-header">
+      <div class="card-icon">HCDN</div>
+      <div>
+        <div class="card-title">Monitor de Eficiencia Legislativa</div>
+        <div class="card-sub">Cámara de Diputados · Congreso Nacional</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">257</div><div class="stat-lbl">Diputados</div></div>
+      <div class="stat"><div class="stat-val">12</div><div class="stat-lbl">Indicadores</div></div>
+      <div class="stat"><div class="stat-val">4</div><div class="stat-lbl">Dimensiones</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">📊</span><span class="lbl">12 KPIs — IPU · OCDE · CEPAL · OGP</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">👤</span><span class="lbl">ICE — Índice eficiencia por diputado/a</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">💰</span><span class="lbl">Costo per cápita y por bancada</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">📈</span><span class="lbl">Evolución presupuesto 2019–2026</span><span class="tag-ready">✓ activo</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Fuente: HCDN · Presupuesto Abierto · INDEC</span>
+      <span class="ver">Ver HCDN →</span>
+    </div>
+  </a>
+
+  <!-- Monitor Senado -->
+  <a href="https://github.com/Viny2030/monitor_legistativo_senadores" target="_blank" class="card rama-sen pendiente">
+    <span class="badge-status badge-pending">⏳ PRONTO</span>
+    <div class="card-header">
+      <div class="card-icon">SEN</div>
+      <div>
+        <div class="card-title">Monitor Legislativo · Senado</div>
+        <div class="card-sub">Cámara de Senadores · 72 senadores</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">72</div><div class="stat-lbl">Senadores</div></div>
+      <div class="stat"><div class="stat-val">24</div><div class="stat-lbl">Provincias</div></div>
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">KPIs</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">🗺️</span><span class="lbl">Nómina 72 senadores con filtros</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">📊</span><span class="lbl">Indicadores KPI bipartidistas</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">🗓️</span><span class="lbl">Calendario legislativo</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">💸</span><span class="lbl">Monitor de dieta parlamentaria</span><span class="tag-pending">en deploy</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Fuente: argentinadatos.com · HCSN</span>
+      <span class="ver">Ver repo →</span>
+    </div>
+  </a>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SECCIÓN 3 — CONTRATOS Y COMPRAS PÚBLICAS
+════════════════════════════════════════════════ -->
+<div class="section-label" style="margin-top: 24px;">Contratos y Compras Públicas</div>
+<div class="cards">
+
+  <!-- Monitor Contratos v2 -->
+  <a href="https://monitorcontratosv2-production.up.railway.app" target="_blank" class="card rama-cont">
+    <span class="badge-status badge-live">● LIVE</span>
+    <div class="card-header">
+      <div class="card-icon">MCv2</div>
+      <div>
+        <div class="card-title">Monitor de Contratos y Licitaciones</div>
+        <div class="card-sub">Argentina · Análisis de riesgo algorítmico</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Procesos</div></div>
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Alertas</div></div>
+      <div class="stat"><div class="stat-val">v1.0</div><div class="stat-lbl">Versión</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">🚀</span><span class="lbl">Análisis en vivo — ciclo completo</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">⚠️</span><span class="lbl">Alertas de alto riesgo</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">📖</span><span class="lbl">Documentación y API REST</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🏛️</span><span class="lbl">Histórico de licitaciones</span><span class="tag-ready">✓ activo</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Fuente: datos.gob.ar · BORA · CompAR</span>
+      <span class="ver">Ver contratos →</span>
+    </div>
+  </a>
+
+  <!-- GobBo / Comprar TGN -->
+  <a href="https://gobbocomprartgn-production.up.railway.app" target="_blank" class="card rama-bo">
+    <span class="badge-status badge-live">● LIVE</span>
+    <div class="card-header">
+      <div class="card-icon">TGN</div>
+      <div>
+        <div class="card-title">Monitor Compras Públicas · Bolivia</div>
+        <div class="card-sub">Tesorería General de la Nación · gob.bo</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Procesos</div></div>
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Alertas</div></div>
+      <div class="stat"><div class="stat-val">v1.0</div><div class="stat-lbl">Versión</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">🚀</span><span class="lbl">Análisis en vivo — ciclo completo</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">⚠️</span><span class="lbl">Alertas de alto riesgo</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">📖</span><span class="lbl">Documentación y API REST</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🏦</span><span class="lbl">Comprar TGN — contrataciones</span><span class="tag-ready">✓ activo</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Fuente: comprar.gob.bo · TGN Bolivia</span>
+      <span class="ver">Ver TGN →</span>
+    </div>
+  </a>
+
+</div>
+
+<!-- ═══════════════════════════════════════════════
+     SECCIÓN 4 — TRANSPARENCIA TRANSVERSAL
+════════════════════════════════════════════════ -->
+<div class="section-label" style="margin-top: 24px;">Transparencia Transversal</div>
+<div class="cards">
+
+  <!-- Hub Transparencia -->
+  <a href="https://github.com/Viny2030/hub_transparencia" target="_blank" class="card rama-hub pendiente">
+    <span class="badge-status badge-pending">⏳ PRONTO</span>
+    <div class="card-header">
+      <div class="card-icon">HUB</div>
+      <div>
+        <div class="card-title">Hub de Transparencia</div>
+        <div class="card-sub">Integración transversal de datos abiertos</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Fuentes</div></div>
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Datasets</div></div>
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">APIs</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">🔗</span><span class="lbl">Integración de todos los módulos</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">📂</span><span class="lbl">Datasets unificados</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">🌐</span><span class="lbl">API central de transparencia</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">📥</span><span class="lbl">Exportación y descarga de datos</span><span class="tag-pending">en deploy</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Fuente: datos.gob.ar · múltiples organismos</span>
+      <span class="ver">Ver repo →</span>
+    </div>
+  </a>
+
+  <!-- Justicia -->
+  <a href="https://github.com/Viny2030/justicia" target="_blank" class="card rama-jus pendiente">
+    <span class="badge-status badge-pending">⏳ PRONTO</span>
+    <div class="card-header">
+      <div class="card-icon">JUS</div>
+      <div>
+        <div class="card-title">Dashboard Eficiencia Judicial</div>
+        <div class="card-sub">Transparencia del Poder Judicial · Argentina</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Causas</div></div>
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Juzgados</div></div>
+      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">KPIs</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">⚖️</span><span class="lbl">Eficiencia judicial por fuero</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">📋</span><span class="lbl">Transparencia de sentencias</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">🔍</span><span class="lbl">Indicadores de acceso a la justicia</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">🗓️</span><span class="lbl">Tiempos procesales</span><span class="tag-pending">en deploy</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Fuente: PJN · CSJN · SAIJ</span>
+      <span class="ver">Ver repo →</span>
+    </div>
+  </a>
+
+</div>
+
+<div style="height: 48px;"></div>
+
+<footer>
+  Fuentes: <a href="https://datos.gob.ar" target="_blank">datos.gob.ar</a> ·
+  <a href="https://mapadelestado.dyte.gob.ar" target="_blank">MapaDelEstado</a> ·
+  <a href="https://www.boletinoficial.gob.ar" target="_blank">BORA</a> ·
+  <a href="https://github.com/Viny2030/monitor" target="_blank">Código fuente</a> ·
+  No afiliado al gobierno argentino
+</footer>
+
+<!-- ═══ MODAL DONACIÓN ═══ -->
+<div class="don-overlay" id="don-overlay" onclick="cerrarDonacion(event)">
+  <div class="don-modal">
+    <button class="don-close" onclick="cerrarDonacion()">×</button>
+    <h2>💚 Apoyar el Monitor</h2>
+    <p class="sub">Proyecto open source y sin publicidad. Tu apoyo mantiene los scrapers activos y mejora las herramientas de transparencia.</p>
+    <div class="don-opciones">
+      <div class="don-op" id="op-pesos" onclick="mostrarDatos('p')">🇦🇷 Pesos</div>
+      <div class="don-op" id="op-dolar" onclick="mostrarDatos('u')">💵 Dólares</div>
+      <div class="don-op" id="op-exter" onclick="mostrarDatos('e')">🌍 Exterior</div>
+    </div>
+    <div class="don-datos" id="don-datos"></div>
+    <p class="don-nota">Proyecto open source · <a href="https://github.com/Viny2030" target="_blank" style="color:#2563eb">github.com/Viny2030</a></p>
+  </div>
+</div>
+
+<script>
+(function() {
+  var _D = {
+    p: "eyJ0aXBvIjoiQ2FqYSBBaG9ycm8gUGVzb3MiLCJjYnUiOiIwMTQwMDA1MjAzNDAwNTUyNjUyMzEwIiwiYWxpYXMiOiJBTEdPUklULk1PTlRFLlBFU09TIiwidGl0dWxhciI6IlZpY2VudGUgSHVtYmVydG8gTW9udGV2ZXJkZSJ9",
+    u: "eyJ0aXBvIjoiQ2FqYSBBaG9ycm8gRMOzbGFyZXMiLCJjYnUiOiIwMTQwMDA1MjA0NDAwNTUwMzI5NzA5IiwiYWxpYXMiOiJBTEdPLk1PTlRFLkRPTEFSRVMiLCJ0aXR1bGFyIjoiVmljZW50ZSBIdW1iZXJ0byBNb250ZXZlcmRlIn0=",
+    e: "eyJiYW5jbyI6IkJhbmNvIFNhbnRhbmRlciBNb250ZXZpZGVvIiwidGl0dWxhciI6IlZpY2VudGUgSHVtYmVydG8gTW9udGV2ZXJkZSIsImN1ZW50YSI6IkNhamEgZGUgQWhvcnJvIGVuIETDs2xhcmVzIiwibnVtZXJvIjoiMDA1MjAwMTgzNTAwIiwic3dpZnQiOiJCU0NIVVlNTSJ9"
+  };
+  var _C = {
+    p: [["Tipo","tipo"],["CBU","cbu"],["Alias","alias"],["Titular","titular"]],
+    u: [["Tipo","tipo"],["CBU","cbu"],["Alias","alias"],["Titular","titular"]],
+    e: [["Banco","banco"],["Titular","titular"],["Cuenta","cuenta"],["Número","numero"],["SWIFT","swift"]]
+  };
+  window.abrirDonacion = function() { document.getElementById("don-overlay").classList.add("open"); };
+  window.cerrarDonacion = function(e) { if (!e || e.target===document.getElementById("don-overlay")) document.getElementById("don-overlay").classList.remove("open"); };
+  window.mostrarDatos = function(t) {
+    ["pesos","dolar","exter"].forEach(function(x){ document.getElementById("op-"+x).classList.remove("active"); });
+    document.getElementById("op-"+{p:"pesos",u:"dolar",e:"exter"}[t]).classList.add("active");
+    var d=JSON.parse(atob(_D[t])), c=_C[t];
+    var h="<h3>"+({p:"Transferencia en Pesos",u:"Transferencia en Dólares",e:"Desde el Exterior"}[t])+"</h3>";
+    c.forEach(function(f){ var v=d[f[1]]||"—"; h+="<div class=\"don-fila\"><span class=\"lbl\">"+f[0]+"</span><span style=\"display:flex;align-items:center\"><span class=\"val\" id=\"dv-"+f[1]+"\">"+v+"</span><button class=\"don-copy\" onclick=\"copiar('"+f[1]+"')\">copiar</button></span></div>"; });
+    var el=document.getElementById("don-datos"); el.innerHTML=h; el.classList.add("visible");
+  };
+  window.copiar = function(id) {
+    var el=document.getElementById("dv-"+id); if(!el) return;
+    navigator.clipboard.writeText(el.textContent).then(function(){ var b=el.nextElementSibling; b.textContent="✓ copiado"; b.classList.add("copiado"); setTimeout(function(){ b.textContent="copiar"; b.classList.remove("copiado"); },2000); });
+  };
+  document.addEventListener("keydown", function(e){ if(e.key==="Escape") cerrarDonacion(); });
+})();
+</script>
+</body>
+</html>
