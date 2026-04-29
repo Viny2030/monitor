@@ -243,7 +243,7 @@ footer a { color: #1e40af; text-decoration: none; }
   <div class="gstat"><div class="gstat-val">$3.8B</div><div class="gstat-lbl">ARS adjudicados</div></div>
   <div class="gstat"><div class="gstat-val">329</div><div class="gstat-lbl">Legisladores monitoreados</div></div>
   <div class="gstat"><div class="gstat-val">12</div><div class="gstat-lbl">Indicadores legislativos</div></div>
-  <div class="gstat"><div class="gstat-val">7</div><div class="gstat-lbl">Módulos activos</div></div>
+  <div class="gstat"><div class="gstat-val">6</div><div class="gstat-lbl">Módulos activos</div></div>
 </div>
 
 <!-- ═══════════════════════════════════════════════
@@ -460,62 +460,62 @@ footer a { color: #1e40af; text-decoration: none; }
 </div>
 
 <!-- ═══════════════════════════════════════════════
-     SECCIÓN 4 — TRANSPARENCIA TRANSVERSAL
+     SECCIÓN 4 — PODER JUDICIAL
 ════════════════════════════════════════════════ -->
-<div class="section-label" style="margin-top: 24px;">Transparencia Transversal</div>
+<div class="section-label" style="margin-top: 24px;">Poder Judicial</div>
 <div class="cards">
-
-  <!-- Hub Transparencia -->
-  <a href="https://github.com/Viny2030/hub_transparencia" target="_blank" class="card rama-hub pendiente">
-    <span class="badge-status badge-pending">⏳ PRONTO</span>
-    <div class="card-header">
-      <div class="card-icon">HUB</div>
-      <div>
-        <div class="card-title">Hub de Transparencia</div>
-        <div class="card-sub">Integración transversal de datos abiertos</div>
-      </div>
-    </div>
-    <div class="card-stats">
-      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Fuentes</div></div>
-      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Datasets</div></div>
-      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">APIs</div></div>
-    </div>
-    <div class="card-sections">
-      <div class="section-item"><span class="icon">🔗</span><span class="lbl">Integración de todos los módulos</span><span class="tag-pending">en deploy</span></div>
-      <div class="section-item"><span class="icon">📂</span><span class="lbl">Datasets unificados</span><span class="tag-pending">en deploy</span></div>
-      <div class="section-item"><span class="icon">🌐</span><span class="lbl">API central de transparencia</span><span class="tag-pending">en deploy</span></div>
-      <div class="section-item"><span class="icon">📥</span><span class="lbl">Exportación y descarga de datos</span><span class="tag-pending">en deploy</span></div>
-    </div>
-    <div class="card-footer">
-      <span>Fuente: datos.gob.ar · múltiples organismos</span>
-      <span class="ver">Ver repo →</span>
-    </div>
-  </a>
 
   <!-- Justicia -->
   <a href="https://github.com/Viny2030/justicia" target="_blank" class="card rama-jus pendiente">
-    <span class="badge-status badge-pending">⏳ PRONTO</span>
+    <span class="badge-status badge-pending">⏳ DEPLOY</span>
     <div class="card-header">
       <div class="card-icon">JUS</div>
       <div>
         <div class="card-title">Dashboard Eficiencia Judicial</div>
-        <div class="card-sub">Transparencia del Poder Judicial · Argentina</div>
+        <div class="card-sub">PJN · Magistrados · Juzgados · Vacantes</div>
       </div>
     </div>
     <div class="card-stats">
-      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Causas</div></div>
-      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">Juzgados</div></div>
-      <div class="stat"><div class="stat-val">—</div><div class="stat-lbl">KPIs</div></div>
+      <div class="stat"><div class="stat-val">✓</div><div class="stat-lbl">Magistrados</div></div>
+      <div class="stat"><div class="stat-val">✓</div><div class="stat-lbl">Juzgados</div></div>
+      <div class="stat"><div class="stat-val">✓</div><div class="stat-lbl">Vacantes</div></div>
     </div>
     <div class="card-sections">
-      <div class="section-item"><span class="icon">⚖️</span><span class="lbl">Eficiencia judicial por fuero</span><span class="tag-pending">en deploy</span></div>
-      <div class="section-item"><span class="icon">📋</span><span class="lbl">Transparencia de sentencias</span><span class="tag-pending">en deploy</span></div>
-      <div class="section-item"><span class="icon">🔍</span><span class="lbl">Indicadores de acceso a la justicia</span><span class="tag-pending">en deploy</span></div>
-      <div class="section-item"><span class="icon">🗓️</span><span class="lbl">Tiempos procesales</span><span class="tag-pending">en deploy</span></div>
+      <div class="section-item"><span class="icon">⚖️</span><span class="lbl">Eficiencia judicial — eficiencia_judicial.html</span><span class="tag-ready">✓ en repo</span></div>
+      <div class="section-item"><span class="icon">👨‍⚖️</span><span class="lbl">Magistrados — magistrados.html</span><span class="tag-ready">✓ en repo</span></div>
+      <div class="section-item"><span class="icon">🏛️</span><span class="lbl">Juzgados nacionales CSV/JSON</span><span class="tag-ready">✓ en repo</span></div>
+      <div class="section-item"><span class="icon">🔗</span><span class="lbl">Cruce designaciones × senadores</span><span class="tag-ready">✓ activo</span></div>
     </div>
     <div class="card-footer">
-      <span>Fuente: PJN · CSJN · SAIJ</span>
-      <span class="ver">Ver repo →</span>
+      <span>Fuente: PJN · CSJN · datos.jus.gov.ar</span>
+      <span class="ver" style="color:#9f1239;">Pendiente deploy →</span>
+    </div>
+  </a>
+
+  <!-- Cruce Designaciones × Senadores -->
+  <a href="cruce_designaciones_senadores.html" class="card" style="border-color:#f59e0b44; --accent:#f59e0b;">
+    <span class="badge-status badge-live" style="background:#fef3c7; color:#92400e;">🔗 CRUCE</span>
+    <div class="card-header">
+      <div class="card-icon" style="background: linear-gradient(135deg, #9f1239, #1e40af);">×</div>
+      <div>
+        <div class="card-title">Cruce · Designaciones × Senadores</div>
+        <div class="card-sub">Ejecutivo designa → Decreto → Juez → Provincia → Senadores</div>
+      </div>
+    </div>
+    <div class="card-stats">
+      <div class="stat"><div class="stat-val" style="color:#f59e0b;">∞</div><div class="stat-lbl">Designaciones</div></div>
+      <div class="stat"><div class="stat-val" style="color:#f59e0b;">72</div><div class="stat-lbl">Senadores</div></div>
+      <div class="stat"><div class="stat-val" style="color:#f59e0b;">24</div><div class="stat-lbl">Provincias</div></div>
+    </div>
+    <div class="card-sections">
+      <div class="section-item"><span class="icon">🏛️</span><span class="lbl">Cadena de designación completa</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🎙️</span><span class="lbl">Senadores actuales por provincia</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">📜</span><span class="lbl">Decreto + presidente + ministro</span><span class="tag-ready">✓ activo</span></div>
+      <div class="section-item"><span class="icon">🔍</span><span class="lbl">Filtros por provincia y presidente</span><span class="tag-ready">✓ activo</span></div>
+    </div>
+    <div class="card-footer">
+      <span>Justicia × Senado · cruce por provincia</span>
+      <span class="ver" style="color:#f59e0b;">Ver cruce →</span>
     </div>
   </a>
 

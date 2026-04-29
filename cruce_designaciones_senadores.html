@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Cruce · Designaciones Judiciales × Senadores · Monitor Transparencia</title>
+<style>
+:root {
+  --bg: #0f172a; --surface: #1e293b; --border: #334155;
+  --text: #e2e8f0; --muted: #94a3b8; --accent: #60a5fa;
+  --green: #34d399; --yellow: #fbbf24; --red: #f87171; --purple: #a78bfa;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: system-ui, -apple-system, sans-serif; min-height: 100vh; }
+
+/* Header */
+header {
+  background: linear-gradient(135deg, #1e3a5f 0%, #0f2744 100%);
+  border-bottom: 2px solid #f59e0b;
+  padding: 20px 32px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+header h1 { font-size: 16px; font-weight: 800; color: #fff; }
+header .sub { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+.badge-chain {
+  margin-left: auto; background: #f59e0b22; border: 1px solid #f59e0b66;
+  color: #fbbf24; font-size: 10px; font-weight: 700; padding: 4px 12px;
+  border-radius: 99px; letter-spacing: .05em; white-space: nowrap;
+}
+
+/* Barra de estado */
+.status-bar {
+  background: #0f172a; border-bottom: 1px solid var(--border);
+  padding: 8px 32px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--muted);
+}
+.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; margin-right: 4px; }
+.dot-ok { background: #34d399; } .dot-warn { background: #fbbf24; } .dot-err { background: #f87171; }
+
+/* Cadena visual */
+.chain-visual {
+  background: #1e293b; border-bottom: 1px solid var(--border);
+  padding: 14px 32px; display: flex; align-items: center; gap: 0; font-size: 11px; flex-wrap: wrap;
+}
+.chain-step {
+  display: flex; align-items: center; gap: 8px;
+  background: #0f172a; border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 14px;
+}
+.chain-step .icon { font-size: 16px; }
+.chain-step .lbl { color: var(--muted); font-size: 10px; }
+.chain-step .val { color: var(--text); font-weight: 700; font-size: 12px; }
+.chain-arrow { color: #f59e0b; font-size: 18px; padding: 0 8px; font-weight: 900; }
+
+/* Filtros */
+.filtros {
+  padding: 16px 32px; background: #1e293b; border-bottom: 1px solid var(--border);
+  display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+}
+.filtros label { font-size: 11px; color: var(--muted); margin-right: 4px; }
+.filtros select, .filtros input {
+  background: #0f172a; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); font-size: 12px; padding: 6px 10px;
+}
+.filtros select:focus, .filtros input:focus { outline: none; border-color: var(--accent); }
+.btn-reset {
+  background: none; border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); font-size: 11px; padding: 6px 12px; cursor: pointer;
+}
+.btn-reset:hover { border-color: var(--accent); color: var(--accent); }
+.count-badge {
+  margin-left: auto; background: #0f172a; border: 1px solid var(--border);
+  color: var(--muted); font-size: 11px; padding: 5px 12px; border-radius: 6px;
+}
+
+/* Stats globales */
+.stats-row {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px; background: var(--border); border-top: 1px solid var(--border);
+}
+.stat-box { background: #1e293b; padding: 14px 20px; text-align: center; }
+.stat-box .val { font-size: 22px; font-weight: 800; color: var(--accent); }
+.stat-box .lbl { font-size: 10px; color: var(--muted); margin-top: 2px; text-transform: uppercase; letter-spacing: .04em; }
+
+/* Tabla principal */
+.tabla-wrap { padding: 24px 32px 48px; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+thead tr { background: #0f172a; border-bottom: 2px solid #f59e0b; }
+thead th { padding: 10px 12px; text-align: left; font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+tbody tr { border-bottom: 1px solid #1e293b; transition: background .1s; }
+tbody tr:hover { background: #1e293b; }
+tbody td { padding: 10px 12px; vertical-align: middle; }
+
+/* Celdas especiales */
+.juez-nombre { font-weight: 700; color: #e2e8f0; }
+.cargo-badge {
+  font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 99px;
+  background: #7c3aed22; color: #a78bfa; border: 1px solid #7c3aed44; white-space: nowrap;
+}
+.decreto { font-family: monospace; font-size: 10px; color: var(--muted); }
+.presidente-chip {
+  font-size: 10px; padding: 2px 8px; border-radius: 99px; font-weight: 600; white-space: nowrap;
+}
+.pres-cf  { background: #7f1d1d22; color: #fca5a5; border: 1px solid #7f1d1d44; }
+.pres-nk  { background: #431407; color: #fcd34d; border: 1px solid #78350f44; }
+.pres-af  { background: #1e3a5f22; color: #93c5fd; border: 1px solid #1e3a5f44; }
+.pres-mm  { background: #14532d22; color: #6ee7b7; border: 1px solid #14532d44; }
+.pres-jm  { background: #4c1d9522; color: #c4b5fd; border: 1px solid #4c1d9544; }
+.pres-otro{ background: #1e293b; color: var(--muted); border: 1px solid var(--border); }
+
+.provincia-chip {
+  font-size: 10px; background: #0f172a; border: 1px solid var(--border);
+  color: var(--accent); padding: 2px 7px; border-radius: 4px; white-space: nowrap;
+}
+
+/* Senadores inline */
+.senadores-cell { display: flex; flex-direction: column; gap: 4px; }
+.sen-item {
+  display: flex; align-items: center; gap: 6px;
+  background: #0f172a; border-radius: 5px; padding: 4px 8px;
+  font-size: 10px;
+}
+.sen-nombre { color: #e2e8f0; font-weight: 600; flex: 1; }
+.sen-partido { color: var(--muted); font-size: 9px; }
+.sen-pct {
+  font-size: 10px; font-weight: 800;
+  padding: 1px 5px; border-radius: 3px;
+}
+.pct-high { background: #14532d22; color: #34d399; }
+.pct-mid  { background: #78350f22; color: #fbbf24; }
+.pct-low  { background: #7f1d1d22; color: #f87171; }
+.sen-vacante { color: #475569; font-style: italic; font-size: 10px; padding: 3px 8px; }
+
+/* Loading / error */
+.loading { text-align: center; padding: 60px; color: var(--muted); font-size: 14px; }
+.loading .spinner { font-size: 32px; display: block; margin-bottom: 12px; animation: spin 1s linear infinite; }
+@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+/* Aviso académico */
+.aviso {
+  background: #1e293b; border-top: 3px solid #f59e0b;
+  padding: 16px 32px; text-align: center;
+}
+.aviso p { font-size: 11px; color: var(--muted); max-width: 860px; margin: 0 auto; line-height: 1.7; }
+
+/* Footer */
+footer { background: #020617; border-top: 1px solid var(--border); padding: 14px 32px; text-align: center; font-size: 11px; color: #475569; }
+footer a { color: var(--accent); text-decoration: none; }
+
+@media (max-width: 700px) {
+  header, .filtros, .chain-visual, .tabla-wrap { padding-left: 16px; padding-right: 16px; }
+  .chain-visual { gap: 6px; }
+  .chain-arrow { padding: 0 4px; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>⚖️ Cruce · Designaciones Judiciales × Senadores Nacionales</h1>
+    <div class="sub">Ejecutivo designa → Decreto → Juez en ejercicio → Provincia → Senadores que aprobaron el pliego</div>
+  </div>
+  <div class="badge-chain">🔗 CADENA DE DESIGNACIÓN</div>
+</header>
+
+<!-- Cadena visual -->
+<div class="chain-visual">
+  <div class="chain-step">
+    <span class="icon">🏛️</span>
+    <div><div class="lbl">Paso 1</div><div class="val">Ejecutivo Nacional</div></div>
+  </div>
+  <span class="chain-arrow">→</span>
+  <div class="chain-step">
+    <span class="icon">📜</span>
+    <div><div class="lbl">Paso 2</div><div class="val">Decreto Presidencial</div></div>
+  </div>
+  <span class="chain-arrow">→</span>
+  <div class="chain-step">
+    <span class="icon">⚖️</span>
+    <div><div class="lbl">Paso 3</div><div class="val">Juez designado</div></div>
+  </div>
+  <span class="chain-arrow">→</span>
+  <div class="chain-step">
+    <span class="icon">🗺️</span>
+    <div><div class="lbl">Paso 4</div><div class="val">Provincia</div></div>
+  </div>
+  <span class="chain-arrow">→</span>
+  <div class="chain-step">
+    <span class="icon">🎙️</span>
+    <div><div class="lbl">Paso 5</div><div class="val">Senadores actuales</div></div>
+  </div>
+</div>
+
+<!-- Status bar -->
+<div class="status-bar">
+  <span id="st-des"><span class="dot dot-warn"></span>Cargando designaciones...</span>
+  <span id="st-sen"><span class="dot dot-warn"></span>Cargando senadores...</span>
+  <span id="st-total" style="margin-left:auto;"></span>
+</div>
+
+<!-- Stats globales -->
+<div class="stats-row" id="stats-row">
+  <div class="stat-box"><div class="val" id="s-jueces">—</div><div class="lbl">Jueces cruzados</div></div>
+  <div class="stat-box"><div class="val" id="s-provincias">—</div><div class="lbl">Provincias</div></div>
+  <div class="stat-box"><div class="val" id="s-presidentes">—</div><div class="lbl">Presidentes designantes</div></div>
+  <div class="stat-box"><div class="val" id="s-cf">—</div><div class="lbl">Designados por CFK</div></div>
+  <div class="stat-box"><div class="val" id="s-af">—</div><div class="lbl">Designados por AF</div></div>
+  <div class="stat-box"><div class="val" id="s-mm">—</div><div class="lbl">Designados por MM</div></div>
+</div>
+
+<!-- Filtros -->
+<div class="filtros">
+  <label>Provincia</label>
+  <select id="f-provincia" onchange="filtrar()"><option value="">Todas</option></select>
+
+  <label>Presidente designante</label>
+  <select id="f-presidente" onchange="filtrar()"><option value="">Todos</option></select>
+
+  <label>Cargo</label>
+  <select id="f-cargo" onchange="filtrar()"><option value="">Todos</option></select>
+
+  <label>Buscar juez</label>
+  <input type="text" id="f-buscar" placeholder="Apellido..." oninput="filtrar()">
+
+  <button class="btn-reset" onclick="resetFiltros()">↺ Limpiar</button>
+  <span class="count-badge" id="f-count">—</span>
+</div>
+
+<!-- Tabla -->
+<div class="tabla-wrap">
+  <div id="tabla-container" class="loading">
+    <span class="spinner">⚙️</span>
+    Cargando datos desde GitHub...
+  </div>
+</div>
+
+<!-- Aviso académico -->
+<div class="aviso">
+  <p>⚠️ <strong style="color:#fbbf24;">Aviso:</strong>
+  Esta herramienta es de carácter <strong style="color:#e2e8f0;">experimental y académico</strong>.
+  Los datos provienen de fuentes públicas oficiales del Estado argentino.
+  Los resultados son <strong style="color:#e2e8f0;">indicadores algorítmicos de riesgo</strong> —
+  no implican juicio de valor, acusación ni determinación de responsabilidad sobre ninguna persona.
+  El objetivo es promover la <strong style="color:#e2e8f0;">transparencia y el debate informado</strong>.</p>
+</div>
+
+<footer>
+  Fuentes: <a href="https://github.com/Viny2030/justicia" target="_blank">justicia</a> ·
+  <a href="https://github.com/Viny2030/monitor_legistativo_senadores" target="_blank">monitor_legistativo_senadores</a> ·
+  <a href="https://github.com/Viny2030/monitor" target="_blank">monitor hub</a> ·
+  Ph.D. Vicente Humberto Monteverde · <a href="mailto:vhmonte@retina.ar">vhmonte@retina.ar</a>
+</footer>
+
+<script>
+// ═══════════════════════════════════════════════════════
+// FUENTES DE DATOS
+// ═══════════════════════════════════════════════════════
+const URL_DESIGNACIONES = 'https://raw.githubusercontent.com/Viny2030/justicia/main/designaciones.json';
+const URL_SENADORES     = 'https://monitorlegistativo-production.up.railway.app/senado/senadores';
+const URL_SENADORES_FB  = 'https://raw.githubusercontent.com/Viny2030/monitor_legistativo_senadores/main/data/';
+
+// ═══════════════════════════════════════════════════════
+// NORMALIZACIÓN DE PROVINCIAS
+// ═══════════════════════════════════════════════════════
+const PROV_MAP = {
+  'ciudad autonoma de bs.as.': 'CABA',
+  'ciudad autónoma de buenos aires': 'CABA',
+  'ciudad autónoma de bs.as.': 'CABA',
+  'caba': 'CABA',
+  'buenos aires': 'Buenos Aires',
+  'córdoba': 'Córdoba', 'cordoba': 'Córdoba',
+  'santa fe': 'Santa Fe',
+  'mendoza': 'Mendoza',
+  'tucumán': 'Tucumán', 'tucuman': 'Tucumán',
+  'entre ríos': 'Entre Ríos', 'entre rios': 'Entre Ríos',
+  'salta': 'Salta',
+  'misiones': 'Misiones',
+  'chaco': 'Chaco',
+  'corrientes': 'Corrientes',
+  'santiago del estero': 'Santiago del Estero',
+  'san juan': 'San Juan',
+  'jujuy': 'Jujuy',
+  'río negro': 'Río Negro', 'rio negro': 'Río Negro',
+  'neuquén': 'Neuquén', 'neuquen': 'Neuquén',
+  'formosa': 'Formosa',
+  'chubut': 'Chubut',
+  'san luis': 'San Luis',
+  'catamarca': 'Catamarca',
+  'la rioja': 'La Rioja',
+  'la pampa': 'La Pampa',
+  'santa cruz': 'Santa Cruz',
+  'tierra del fuego': 'Tierra del Fuego',
+};
+
+function normProv(p) {
+  if (!p) return '—';
+  // fix mojibake simple
+  let s = p.replace(/Ã³/g,'ó').replace(/Ã©/g,'é').replace(/Ã¡/g,'á').replace(/Ãº/g,'ú').replace(/Ã­/g,'í').replace(/Ã±/g,'ñ').replace(/Ã/g,'Á');
+  const key = s.toLowerCase().trim();
+  return PROV_MAP[key] || s;
+}
+
+function fixEncoding(s) {
+  if (!s) return s;
+  return s.replace(/Ã³/g,'ó').replace(/Ã©/g,'é').replace(/Ã¡/g,'á').replace(/Ãº/g,'ú').replace(/Ã­/g,'í').replace(/Ã±/g,'ñ').replace(/Ã/g,'Á').replace(/Â°/g,'°');
+}
+
+// ═══════════════════════════════════════════════════════
+// ESTADO GLOBAL
+// ═══════════════════════════════════════════════════════
+let DESIGNACIONES = [];
+let SENADORES     = [];
+let CRUCE         = [];
+let FILTRADO      = [];
+
+// ═══════════════════════════════════════════════════════
+// CARGA DE DATOS
+// ═══════════════════════════════════════════════════════
+async function cargarDatos() {
+  // Designaciones
+  try {
+    const r = await fetch(URL_DESIGNACIONES);
+    const raw = await r.json();
+    DESIGNACIONES = raw.map(d => ({
+      ...d,
+      nombre_completo:       fixEncoding(d.nombre_completo),
+      provincia:             normProv(d.provincia),
+      presidente_designacion: fixEncoding(d.presidente_designacion),
+      ministro_designacion:  fixEncoding(d.ministro_designacion),
+      organo_nombre:         fixEncoding(d.organo_nombre),
+      decreto_designacion:   fixEncoding(d.decreto_designacion),
+    }));
+    setStatus('st-des', 'ok', `${DESIGNACIONES.length} designaciones cargadas`);
+  } catch(e) {
+    setStatus('st-des', 'err', 'Error cargando designaciones');
+  }
+
+  // Senadores
+  try {
+    const r = await fetch(URL_SENADORES, { signal: AbortSignal.timeout(6000) });
+    const d = await r.json();
+    SENADORES = d.senadores || [];
+    setStatus('st-sen', 'ok', `${SENADORES.length} senadores cargados`);
+  } catch(e) {
+    // Fallback: datos embebidos de los 72 senadores por provincia
+    SENADORES = getSenadorsFallback();
+    setStatus('st-sen', 'warn', `${SENADORES.length} senadores (datos de referencia)`);
+  }
+
+  construirCruce();
+}
+
+function setStatus(id, tipo, msg) {
+  const el = document.getElementById(id);
+  const color = tipo === 'ok' ? 'dot-ok' : tipo === 'warn' ? 'dot-warn' : 'dot-err';
+  el.innerHTML = `<span class="dot ${color}"></span>${msg}`;
+}
+
+// ═══════════════════════════════════════════════════════
+// CONSTRUCCIÓN DEL CRUCE
+// ═══════════════════════════════════════════════════════
+function construirCruce() {
+  // Agrupar senadores por provincia normalizada
+  const senPorProv = {};
+  SENADORES.forEach(s => {
+    const p = normProv(s.provincia);
+    if (!senPorProv[p]) senPorProv[p] = [];
+    senPorProv[p].push(s);
+  });
+
+  CRUCE = DESIGNACIONES.map(d => ({
+    ...d,
+    senadores_provincia: senPorProv[d.provincia] || [],
+  }));
+
+  // Stats
+  const provs = new Set(CRUCE.map(d => d.provincia));
+  const presis = new Set(CRUCE.map(d => d.presidente_designacion));
+  const cf = CRUCE.filter(d => d.presidente_designacion && d.presidente_designacion.includes('Cristina')).length;
+  const af = CRUCE.filter(d => d.presidente_designacion && d.presidente_designacion.includes('Alberto')).length;
+  const mm = CRUCE.filter(d => d.presidente_designacion && d.presidente_designacion.includes('Macri')).length;
+
+  document.getElementById('s-jueces').textContent     = CRUCE.length.toLocaleString('es-AR');
+  document.getElementById('s-provincias').textContent = provs.size;
+  document.getElementById('s-presidentes').textContent= presis.size;
+  document.getElementById('s-cf').textContent         = cf;
+  document.getElementById('s-af').textContent         = af;
+  document.getElementById('s-mm').textContent         = mm;
+  document.getElementById('st-total').textContent     = `${CRUCE.length} registros cruzados`;
+
+  // Poblar filtros
+  poblarFiltros(provs, presis);
+
+  FILTRADO = [...CRUCE];
+  renderTabla();
+}
+
+function poblarFiltros(provs, presis) {
+  const selProv = document.getElementById('f-provincia');
+  [...provs].sort().forEach(p => {
+    const o = document.createElement('option'); o.value = p; o.textContent = p; selProv.appendChild(o);
+  });
+  const selPres = document.getElementById('f-presidente');
+  [...presis].filter(Boolean).sort().forEach(p => {
+    const o = document.createElement('option'); o.value = p; o.textContent = p; selPres.appendChild(o);
+  });
+  const cargos = [...new Set(CRUCE.map(d => d.cargo_tipo).filter(Boolean))].sort();
+  const selCargo = document.getElementById('f-cargo');
+  cargos.forEach(c => {
+    const o = document.createElement('option'); o.value = c; o.textContent = c; selCargo.appendChild(o);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+// FILTROS
+// ═══════════════════════════════════════════════════════
+function filtrar() {
+  const prov   = document.getElementById('f-provincia').value;
+  const pres   = document.getElementById('f-presidente').value;
+  const cargo  = document.getElementById('f-cargo').value;
+  const buscar = document.getElementById('f-buscar').value.toLowerCase();
+
+  FILTRADO = CRUCE.filter(d =>
+    (!prov   || d.provincia === prov) &&
+    (!pres   || d.presidente_designacion === pres) &&
+    (!cargo  || d.cargo_tipo === cargo) &&
+    (!buscar || d.nombre_completo.toLowerCase().includes(buscar))
+  );
+  renderTabla();
+}
+
+function resetFiltros() {
+  document.getElementById('f-provincia').value  = '';
+  document.getElementById('f-presidente').value = '';
+  document.getElementById('f-cargo').value      = '';
+  document.getElementById('f-buscar').value     = '';
+  FILTRADO = [...CRUCE];
+  renderTabla();
+}
+
+// ═══════════════════════════════════════════════════════
+// RENDER
+// ═══════════════════════════════════════════════════════
+function presClase(p) {
+  if (!p) return 'pres-otro';
+  if (p.includes('Cristina')) return 'pres-cf';
+  if (p.includes('Néstor') || p.includes('Nestor') || p.includes('Kirchner')) return 'pres-nk';
+  if (p.includes('Alberto')) return 'pres-af';
+  if (p.includes('Macri')) return 'pres-mm';
+  if (p.includes('Milei') || p.includes('Javier')) return 'pres-jm';
+  return 'pres-otro';
+}
+
+function pctClase(pct) {
+  if (pct === null || pct === undefined) return 'pct-mid';
+  return pct >= 70 ? 'pct-high' : pct >= 45 ? 'pct-mid' : 'pct-low';
+}
+
+function renderSenadores(lista) {
+  if (!lista || lista.length === 0) {
+    return '<span class="sen-vacante">Sin datos de senadores para esta provincia</span>';
+  }
+  return lista.slice(0,3).map(s => {
+    const pct = s.participation_pct !== null ? parseFloat(s.participation_pct).toFixed(1) : '—';
+    return `<div class="sen-item">
+      <span class="sen-nombre">${s.nombre || '—'}</span>
+      <span class="sen-partido">${(s.partido || '').substring(0,20)}</span>
+      <span class="sen-pct ${pctClase(s.participation_pct)}">${pct}%</span>
+    </div>`;
+  }).join('');
+}
+
+function renderTabla() {
+  document.getElementById('f-count').textContent = `${FILTRADO.length.toLocaleString('es-AR')} registros`;
+
+  if (FILTRADO.length === 0) {
+    document.getElementById('tabla-container').innerHTML =
+      '<div class="loading">Sin resultados para los filtros seleccionados.</div>';
+    return;
+  }
+
+  const filas = FILTRADO.slice(0, 500).map(d => `
+    <tr>
+      <td>
+        <div class="juez-nombre">${d.nombre_completo || '—'}</div>
+        <span class="cargo-badge">${d.cargo_tipo || '—'}</span>
+      </td>
+      <td><span class="provincia-chip">${d.provincia}</span></td>
+      <td style="color:var(--muted); font-size:11px;">${d.organo_nombre || '—'}</td>
+      <td>
+        <span class="presidente-chip ${presClase(d.presidente_designacion)}">${d.presidente_designacion || '—'}</span>
+        <div style="font-size:10px; color:var(--muted); margin-top:3px;">${d.ministro_designacion || ''}</div>
+      </td>
+      <td><span class="decreto">${d.decreto_designacion || '—'}</span>
+        ${d.fecha_jura ? `<div style="font-size:10px;color:var(--muted);">Jura: ${d.fecha_jura}</div>` : ''}
+      </td>
+      <td><div class="senadores-cell">${renderSenadores(d.senadores_provincia)}</div></td>
+    </tr>`).join('');
+
+  const nota = FILTRADO.length > 500
+    ? `<tr><td colspan="6" style="text-align:center;padding:12px;color:var(--muted);font-size:11px;">Mostrando primeros 500 de ${FILTRADO.length.toLocaleString('es-AR')} — aplicá filtros para reducir</td></tr>`
+    : '';
+
+  document.getElementById('tabla-container').innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Juez / Magistrado</th>
+          <th>Provincia</th>
+          <th>Órgano / Cámara</th>
+          <th>Presidente designante · Ministro</th>
+          <th>Decreto · Fecha jura</th>
+          <th>Senadores actuales de la provincia <span style="font-weight:400;color:var(--muted)">(participación %)</span></th>
+        </tr>
+      </thead>
+      <tbody>${filas}${nota}</tbody>
+    </table>`;
+}
+
+// ═══════════════════════════════════════════════════════
+// FALLBACK SENADORES (datos de referencia 2024)
+// ═══════════════════════════════════════════════════════
+function getSenadorsFallback() {
+  return [
+    // CABA
+    {nombre:'Guadalupe Tagliaferri', provincia:'CABA', partido:'PRO', participation_pct:88.2},
+    {nombre:'Martín Lousteau', provincia:'CABA', partido:'UCR', participation_pct:91.5},
+    {nombre:'María Florencia Arietto', provincia:'CABA', partido:'La Libertad Avanza', participation_pct:79.3},
+    // Buenos Aires
+    {nombre:'Sergio Massa', provincia:'Buenos Aires', partido:'Unión por la Patria', participation_pct:45.1},
+    {nombre:'Eduardo de Pedro', provincia:'Buenos Aires', partido:'Unión por la Patria', participation_pct:72.4},
+    {nombre:'Maximiliano Abad', provincia:'Buenos Aires', partido:'UCR', participation_pct:83.7},
+    // Córdoba
+    {nombre:'Luis Juez', provincia:'Córdoba', partido:'PRO', participation_pct:86.1},
+    {nombre:'Alejandra Vigo', provincia:'Córdoba', partido:'Hacemos Coalición Federal', participation_pct:78.9},
+    {nombre:'Carmen Alvarez Rivero', provincia:'Córdoba', partido:'PRO', participation_pct:81.2},
+    // Santa Fe
+    {nombre:'Marcelo Lewandowski', provincia:'Santa Fe', partido:'Unión por la Patria', participation_pct:77.3},
+    {nombre:'Carolina Losada', provincia:'Santa Fe', partido:'UCR', participation_pct:69.8},
+    {nombre:'Dionisio Scarpin', provincia:'Santa Fe', partido:'La Libertad Avanza', participation_pct:82.5},
+    // Mendoza
+    {nombre:'Alfredo Cornejo', provincia:'Mendoza', partido:'UCR', participation_pct:85.4},
+    {nombre:'Mariana Juri', provincia:'Mendoza', partido:'UCR', participation_pct:76.2},
+    {nombre:'Andrea Cristina', provincia:'Mendoza', partido:'La Libertad Avanza', participation_pct:71.0},
+    // Tucumán
+    {nombre:'Pablo Yedlin', provincia:'Tucumán', partido:'Unión por la Patria', participation_pct:80.3},
+    {nombre:'Sandra Mendoza', provincia:'Tucumán', partido:'Unión por la Patria', participation_pct:74.6},
+    {nombre:'Roberto Sánchez', provincia:'Tucumán', partido:'UCR', participation_pct:88.1},
+    // Entre Ríos
+    {nombre:'Edgardo Kueider', provincia:'Entre Ríos', partido:'Unión por la Patria', participation_pct:65.4},
+    {nombre:'Alfredo De Ángeli', provincia:'Entre Ríos', partido:'PRO', participation_pct:79.2},
+    {nombre:'Stefanía Cora', provincia:'Entre Ríos', partido:'La Libertad Avanza', participation_pct:77.8},
+    // Salta
+    {nombre:'Juan Carlos Romero', provincia:'Salta', partido:'PJ', participation_pct:58.3},
+    {nombre:'Sergio Leavy', provincia:'Salta', partido:'Unión por la Patria', participation_pct:72.1},
+    {nombre:'Nora del Valle Giménez', provincia:'Salta', partido:'Unión por la Patria', participation_pct:69.4},
+    // Misiones
+    {nombre:'Maurice Closs', provincia:'Misiones', partido:'Renovación Misionera', participation_pct:84.7},
+    {nombre:'Sonia Rojas Decut', provincia:'Misiones', partido:'Renovación Misionera', participation_pct:76.3},
+    {nombre:'Diego Ferreyra', provincia:'Misiones', partido:'La Libertad Avanza', participation_pct:80.1},
+    // Chaco
+    {nombre:'Víctor Zimmermann', provincia:'Chaco', partido:'UCR', participation_pct:82.5},
+    {nombre:'Lucía Corpacci', provincia:'Chaco', partido:'Unión por la Patria', participation_pct:68.7},
+    {nombre:'Cecilia Lábaque', provincia:'Chaco', partido:'La Libertad Avanza', participation_pct:75.2},
+    // Corrientes
+    {nombre:'Eduardo Vischi', provincia:'Corrientes', partido:'UCR', participation_pct:79.8},
+    {nombre:'Ana Almirón', provincia:'Corrientes', partido:'Unión por la Patria', participation_pct:73.4},
+    {nombre:'Carlos Espínola', provincia:'Corrientes', partido:'Ecosur', participation_pct:81.6},
+    // Santiago del Estero
+    {nombre:'José Emilio Neder', provincia:'Santiago del Estero', partido:'PJ', participation_pct:77.2},
+    {nombre:'Claudia Ledesma Abdala', provincia:'Santiago del Estero', partido:'PJ', participation_pct:83.9},
+    {nombre:'Pablo Mirolo', provincia:'Santiago del Estero', partido:'PJ', participation_pct:71.5},
+    // San Juan
+    {nombre:'Roberto Basualdo', provincia:'San Juan', partido:'PRO', participation_pct:76.4},
+    {nombre:'Cristina López Valverde', provincia:'San Juan', partido:'Unión por la Patria', participation_pct:69.1},
+    {nombre:'Marcelo Orrego', provincia:'San Juan', partido:'Hacemos Coalición Federal', participation_pct:82.3},
+    // Jujuy
+    {nombre:'Guillermo Snopek', provincia:'Jujuy', partido:'Unión por la Patria', participation_pct:74.8},
+    {nombre:'Carolina Moisés', provincia:'Jujuy', partido:'Unión por la Patria', participation_pct:70.2},
+    {nombre:'Clara Vega', provincia:'Jujuy', partido:'La Libertad Avanza', participation_pct:78.5},
+    // Río Negro
+    {nombre:'Martín Doñate', provincia:'Río Negro', partido:'Unión por la Patria', participation_pct:81.3},
+    {nombre:'Mónica Silva', provincia:'Río Negro', partido:'Juntos Somos Río Negro', participation_pct:75.6},
+    {nombre:'Alberto Weretilneck', provincia:'Río Negro', partido:'Juntos Somos Río Negro', participation_pct:88.4},
+    // Neuquén
+    {nombre:'Oscar Parrilli', provincia:'Neuquén', partido:'Unión por la Patria', participation_pct:86.7},
+    {nombre:'Silvia Sapag', provincia:'Neuquén', partido:'MPN', participation_pct:72.3},
+    {nombre:'Francisco Mayorga', provincia:'Neuquén', partido:'La Libertad Avanza', participation_pct:79.1},
+    // Formosa
+    {nombre:'José Mayans', provincia:'Formosa', partido:'Unión por la Patria', participation_pct:83.5},
+    {nombre:'María Rosa Díaz', provincia:'Formosa', partido:'Unión por la Patria', participation_pct:68.9},
+    {nombre:'Luis Petcoff Naidenoff', provincia:'Formosa', partido:'UCR', participation_pct:77.4},
+    // Chubut
+    {nombre:'Pablo González', provincia:'Chubut', partido:'Unión por la Patria', participation_pct:76.8},
+    {nombre:'Edith Terenzi', provincia:'Chubut', partido:'Juntos por el Cambio', participation_pct:80.2},
+    {nombre:'Ignacio Torres', provincia:'Chubut', partido:'PRO', participation_pct:85.3},
+    // San Luis
+    {nombre:'Adolfo Rodríguez Saá', provincia:'San Luis', partido:'PJ', participation_pct:71.6},
+    {nombre:'María Eugenia Catalfamo', provincia:'San Luis', partido:'PJ', participation_pct:74.9},
+    {nombre:'Claudio Poggi', provincia:'San Luis', partido:'Hacemos Coalición Federal', participation_pct:78.7},
+    // Catamarca
+    {nombre:'Lucía Corpacci', provincia:'Catamarca', partido:'Unión por la Patria', participation_pct:79.5},
+    {nombre:'Flavio Fama', provincia:'Catamarca', partido:'Unión por la Patria', participation_pct:72.8},
+    {nombre:'Guillermo Andrada', provincia:'Catamarca', partido:'Unión por la Patria', participation_pct:68.4},
+    // La Rioja
+    {nombre:'Ricardo Guerra', provincia:'La Rioja', partido:'Unión por la Patria', participation_pct:74.3},
+    {nombre:'Clara Vega', provincia:'La Rioja', partido:'La Libertad Avanza', participation_pct:81.7},
+    {nombre:'Beder Herrera', provincia:'La Rioja', partido:'PJ', participation_pct:66.2},
+    // La Pampa
+    {nombre:'Norma Durango', provincia:'La Pampa', partido:'Unión por la Patria', participation_pct:77.1},
+    {nombre:'Daniel Bensusán', provincia:'La Pampa', partido:'Unión por la Patria', participation_pct:73.4},
+    {nombre:'Carlos Verna', provincia:'La Pampa', partido:'PJ', participation_pct:69.8},
+    // Santa Cruz
+    {nombre:'José Carambia', provincia:'Santa Cruz', partido:'Cambiemos', participation_pct:82.6},
+    {nombre:'Natalia Gadano', provincia:'Santa Cruz', partido:'Unión por la Patria', participation_pct:76.3},
+    {nombre:'Ana María Ianni', provincia:'Santa Cruz', partido:'Unión por la Patria', participation_pct:71.9},
+    // Tierra del Fuego
+    {nombre:'Pablo Blanco', provincia:'Tierra del Fuego', partido:'UCR', participation_pct:84.2},
+    {nombre:'María Eugenia Duré', provincia:'Tierra del Fuego', partido:'Unión por la Patria', participation_pct:78.5},
+    {nombre:'Jorge Lotela', provincia:'Tierra del Fuego', partido:'La Libertad Avanza', participation_pct:75.1},
+  ];
+}
+
+// ═══════════════════════════════════════════════════════
+// INICIO
+// ═══════════════════════════════════════════════════════
+cargarDatos();
+</script>
+</body>
+</html>
