@@ -14,12 +14,38 @@ Variables de entorno:
 """
 
 import os
+import asyncio
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 import pandas as pd
 
+CSV_PATH = "data/processed/monitor_completo.csv"
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Corre motor_analitico al arrancar si no hay CSV disponible."""
+    if not os.path.exists(CSV_PATH):
+        try:
+            import subprocess, sys
+            print("🔄 CSV no encontrado — corriendo motor_analitico.py...")
+            result = subprocess.run(
+                [sys.executable, "motor_analitico.py"],
+                capture_output=True, text=True, timeout=120
+            )
+            if result.returncode == 0:
+                print("✅ motor_analitico.py completado")
+            else:
+                print(f"⚠️  motor_analitico.py error: {result.stderr[-500:]}")
+        except Exception as e:
+            print(f"⚠️  No se pudo correr motor_analitico.py: {e}")
+    else:
+        print(f"✅ CSV ya disponible: {CSV_PATH}")
+    yield
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Monitor IRI API",
     description="Monitor de Riesgo Institucional - Argentina",
     version="2.0.0",
@@ -33,8 +59,6 @@ app.add_middleware(
 )
 
 REFRESH_TOKEN = os.getenv("REFRESH_TOKEN", "dev")
-CSV_PATH = "data/processed/monitor_completo.csv"
-
 
 def _load_df() -> pd.DataFrame:
     if not os.path.exists(CSV_PATH):
