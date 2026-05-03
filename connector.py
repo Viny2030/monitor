@@ -46,11 +46,28 @@ _JUSTICIA_RAW  = "https://raw.githubusercontent.com/Viny2030/justicia/main"
 _LEGIS_RAW     = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo/main"
 _SENADO_RAW    = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo_senadores/main"
 
-# Fecha dinámica: buscar el CSV más reciente disponible
+# Auto-descubrimiento lazy: se ejecuta solo cuando se necesita, no al importar
 import datetime as _dt
-_SENADO_FECHA = os.getenv("SENADO_CSV_FECHA", "2026-05-03")
-_SENADO_CSV_NOMINA  = f"{_SENADO_RAW}/data/senadores_{_SENADO_FECHA}.csv"
-_SENADO_CSV_PARTIDO = f"{_SENADO_RAW}/data/reporte_partido_senado_{_SENADO_FECHA}.csv"
+
+def _find_latest_senado_csv(base_url: str, prefix: str, days_back: int = 60) -> str:
+    """Prueba fechas desde hoy hacia atrás hasta encontrar un CSV disponible."""
+    today = _dt.date.today()
+    for delta in range(days_back):
+        fecha = (today - _dt.timedelta(days=delta)).strftime("%Y-%m-%d")
+        url = f"{base_url}/data/{prefix}{fecha}.csv"
+        try:
+            r = requests.head(url, timeout=6, headers=HEADERS)
+            if r.status_code == 200:
+                log.info(f"  CSV encontrado: {prefix}{fecha}.csv")
+                return url
+        except Exception:
+            continue
+    log.warning(f"  No se encontró CSV para {prefix} — usando fallback 2026-05-03")
+    return f"{base_url}/data/{prefix}2026-05-03.csv"
+
+# Las URLs se resuelven en runtime, no en import-time
+_SENADO_CSV_NOMINA  = None  # se inicializa en build_senado_df()
+_SENADO_CSV_PARTIDO = None  # se inicializa en build_senado_partido_df()
 
 
 # ── Helpers internos ──────────────────────────────────────────────────────────
@@ -344,7 +361,8 @@ def _fetch_senado_nomina() -> list | None:
             if senadores:
                 return senadores
 
-    df = _get_csv(_SENADO_CSV_NOMINA)
+    url = _find_latest_senado_csv(_SENADO_RAW, "senadores_")
+    df = _get_csv(url)
     if df is not None and not df.empty:
         return df.to_dict(orient="records")
     return None
@@ -358,7 +376,8 @@ def _fetch_senado_partidos() -> list | None:
             if partidos:
                 return partidos
 
-    df = _get_csv(f"{_SENADO_RAW}/data/reporte_partido_senado_{_SENADO_FECHA}.csv")
+    url = _find_latest_senado_csv(_SENADO_RAW, "reporte_partido_senado_")
+    df = _get_csv(url)
     if df is not None and not df.empty:
         return df.to_dict(orient="records")
     return None
