@@ -100,26 +100,30 @@ def _load_from_db() -> pd.DataFrame | None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: intenta cargar desde DB, si no hay datos corre motor_analitico."""
+    """Startup no bloqueante — corre motor en background thread."""
+    import threading
     os.makedirs("data/processed", exist_ok=True)
 
-    # 1. Intentar cargar desde Postgres
-    df_db = _load_from_db()
-    if df_db is not None and len(df_db) > 0:
-        df_db.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
-        print(f"✅ Dataset restaurado desde DB: {len(df_db)} organismos")
-    elif not os.path.exists(CSV_PATH):
-        # 2. No hay DB ni CSV — correr motor
+    def _init_data():
+        # 1. Intentar cargar desde Postgres
+        df_db = _load_from_db()
+        if df_db is not None and len(df_db) > 0:
+            df_db.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
+            print(f"✅ Dataset restaurado desde DB: {len(df_db)} organismos")
+            return
+        if os.path.exists(CSV_PATH):
+            print(f"✅ CSV ya disponible: {CSV_PATH}")
+            return
+        # 2. Correr motor en background
         try:
             import subprocess, sys
-            print("🔄 Sin datos — corriendo motor_analitico.py...")
+            print("🔄 Sin datos — corriendo motor_analitico.py en background...")
             result = subprocess.run(
                 [sys.executable, "motor_analitico.py"],
-                capture_output=True, text=True, timeout=120
+                capture_output=True, text=True, timeout=180
             )
             if result.returncode == 0:
                 print("✅ motor_analitico.py completado")
-                # Guardar en DB para próximo redeploy
                 if os.path.exists(CSV_PATH):
                     df_new = pd.read_csv(CSV_PATH)
                     _save_to_db(df_new)
@@ -127,8 +131,10 @@ async def lifespan(app: FastAPI):
                 print(f"⚠️  motor_analitico error: {result.stderr[-300:]}")
         except Exception as e:
             print(f"⚠️  No se pudo correr motor: {e}")
-    else:
-        print(f"✅ CSV ya disponible: {CSV_PATH}")
+
+    # Arrancar en thread separado — no bloquea el healthcheck
+    t = threading.Thread(target=_init_data, daemon=True)
+    t.start()
     yield
 
 app = FastAPI(
@@ -159,6 +165,12 @@ def _load_df() -> pd.DataFrame:
 def _df_to_records(df: pd.DataFrame) -> list:
     return df.fillna("").to_dict(orient="records")
 
+
+
+@app.get("/health")
+def health_simple():
+    """Healthcheck simple — siempre responde 200 inmediatamente."""
+    return {"status": "ok"}
 
 @app.get("/")
 def health():
