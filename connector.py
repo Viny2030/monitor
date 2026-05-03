@@ -46,8 +46,11 @@ _JUSTICIA_RAW  = "https://raw.githubusercontent.com/Viny2030/justicia/main"
 _LEGIS_RAW     = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo/main"
 _SENADO_RAW    = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo_senadores/main"
 
-_SENADO_CSV_NOMINA  = f"{_SENADO_RAW}/data/senadores_2026-04-05.csv"
-_SENADO_CSV_PARTIDO = f"{_SENADO_RAW}/data/reporte_partido_senado_2026-04-05.csv"
+# Fecha dinámica: buscar el CSV más reciente disponible
+import datetime as _dt
+_SENADO_FECHA = os.getenv("SENADO_CSV_FECHA", "2026-05-03")
+_SENADO_CSV_NOMINA  = f"{_SENADO_RAW}/data/senadores_{_SENADO_FECHA}.csv"
+_SENADO_CSV_PARTIDO = f"{_SENADO_RAW}/data/reporte_partido_senado_{_SENADO_FECHA}.csv"
 
 
 # ── Helpers internos ──────────────────────────────────────────────────────────
@@ -355,7 +358,7 @@ def _fetch_senado_partidos() -> list | None:
             if partidos:
                 return partidos
 
-    df = _get_csv(f"{_SENADO_RAW}/data/reporte_partido_senado_2026-04-05.csv")
+    df = _get_csv(f"{_SENADO_RAW}/data/reporte_partido_senado_{_SENADO_FECHA}.csv")
     if df is not None and not df.empty:
         return df.to_dict(orient="records")
     return None
