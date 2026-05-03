@@ -11,3 +11,4 @@ psycopg2-binary
 # Testing
 pytest
 pytest-asyncio
+echo "`n# rebuild $(Get-Date -Format 'yyyy-MM-dd')" >> requirements.txt
