@@ -23,23 +23,110 @@ import pandas as pd
 
 CSV_PATH = "data/processed/monitor_completo.csv"
 
+# ── Postgres config ───────────────────────────────────────────────────────────
+_DB_URL = (os.getenv("MONITOR_DATABASE_URL") or os.getenv("DATABASE_URL") or "").replace("postgres://", "postgresql://", 1)
+
+def _get_conn():
+    if not _DB_URL:
+        return None
+    try:
+        import psycopg2
+        return psycopg2.connect(_DB_URL)
+    except Exception as e:
+        print(f"⚠️  DB connect error: {e}")
+        return None
+
+def _save_to_db(df: pd.DataFrame):
+    """Guarda el dataset en Postgres para persistencia entre redeploys."""
+    conn = _get_conn()
+    if not conn:
+        return
+    try:
+        import psycopg2.extras
+        cur = conn.cursor()
+        # Limpiar datos del día actual
+        cur.execute("DELETE FROM monitor_iri WHERE fecha_datos = CURRENT_DATE")
+        # Insertar nuevos registros
+        rows = []
+        for _, row in df.iterrows():
+            rows.append((
+                str(row.get("Organismo", "")),
+                str(row.get("Area", "")),
+                float(row.get("Riesgo Financiero", 0) or 0),
+                float(row.get("Riesgo Contratación", 0) or 0),
+                float(row.get("Riesgo Operativo", 0) or 0),
+                float(row.get("Riesgo Datos", 0) or 0),
+                float(row.get("IRI (Score)", 0) or 0),
+                str(row.get("Estado", "")),
+                str(row.get("Fuente", "")),
+            ))
+        psycopg2.extras.execute_values(cur, """
+            INSERT INTO monitor_iri
+                (organismo, area, riesgo_financiero, riesgo_contratacion,
+                 riesgo_operativo, riesgo_datos, iri_score, estado, fuente)
+            VALUES %s
+        """, rows)
+        conn.commit()
+        conn.close()
+        print(f"✅ DB: {len(rows)} registros guardados en monitor_iri")
+    except Exception as e:
+        print(f"⚠️  DB save error: {e}")
+
+def _load_from_db() -> pd.DataFrame | None:
+    """Carga el dataset desde Postgres si está disponible."""
+    conn = _get_conn()
+    if not conn:
+        return None
+    try:
+        df = pd.read_sql("""
+            SELECT organismo AS "Organismo", area AS "Area",
+                   riesgo_financiero AS "Riesgo Financiero",
+                   riesgo_contratacion AS "Riesgo Contratación",
+                   riesgo_operativo AS "Riesgo Operativo",
+                   riesgo_datos AS "Riesgo Datos",
+                   iri_score AS "IRI (Score)",
+                   estado AS "Estado", fuente AS "Fuente"
+            FROM monitor_iri
+            WHERE fecha_datos = (SELECT MAX(fecha_datos) FROM monitor_iri)
+            ORDER BY iri_score DESC
+        """, conn)
+        conn.close()
+        if len(df) > 0:
+            print(f"✅ DB: {len(df)} registros cargados desde monitor_iri")
+            return df
+    except Exception as e:
+        print(f"⚠️  DB load error: {e}")
+    return None
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Corre motor_analitico al arrancar si no hay CSV disponible."""
-    if not os.path.exists(CSV_PATH):
+    """Startup: intenta cargar desde DB, si no hay datos corre motor_analitico."""
+    os.makedirs("data/processed", exist_ok=True)
+
+    # 1. Intentar cargar desde Postgres
+    df_db = _load_from_db()
+    if df_db is not None and len(df_db) > 0:
+        df_db.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
+        print(f"✅ Dataset restaurado desde DB: {len(df_db)} organismos")
+    elif not os.path.exists(CSV_PATH):
+        # 2. No hay DB ni CSV — correr motor
         try:
             import subprocess, sys
-            print("🔄 CSV no encontrado — corriendo motor_analitico.py...")
+            print("🔄 Sin datos — corriendo motor_analitico.py...")
             result = subprocess.run(
                 [sys.executable, "motor_analitico.py"],
                 capture_output=True, text=True, timeout=120
             )
             if result.returncode == 0:
                 print("✅ motor_analitico.py completado")
+                # Guardar en DB para próximo redeploy
+                if os.path.exists(CSV_PATH):
+                    df_new = pd.read_csv(CSV_PATH)
+                    _save_to_db(df_new)
             else:
-                print(f"⚠️  motor_analitico.py error: {result.stderr[-500:]}")
+                print(f"⚠️  motor_analitico error: {result.stderr[-300:]}")
         except Exception as e:
-            print(f"⚠️  No se pudo correr motor_analitico.py: {e}")
+            print(f"⚠️  No se pudo correr motor: {e}")
     else:
         print(f"✅ CSV ya disponible: {CSV_PATH}")
     yield
