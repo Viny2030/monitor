@@ -1,0 +1,16 @@
+name: Refresh Diario Monitor IRI
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /refresh
+        run: |
+          curl -X POST \
+            -H "X-Refresh-Token: ${{ secrets.REFRESH_TOKEN }}" \
+            https://monitor-production-f053.up.railway.app/refresh
