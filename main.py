@@ -1,7 +1,8 @@
 """
 main.py - FastAPI del Monitor IRI
 Endpoints:
-  GET /             health check
+  GET /             redirige a /dashboard
+  GET /info         health check con metadata
   GET /dashboard    dashboard HTML interactivo (sin Streamlit)
   GET /datos        dataset completo (JSON)
   GET /por-area/    organismos filtrados por area
@@ -18,7 +19,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 import pandas as pd
 
 CSV_PATH = "data/processed/monitor_completo.csv"
@@ -44,9 +45,7 @@ def _save_to_db(df: pd.DataFrame):
     try:
         import psycopg2.extras
         cur = conn.cursor()
-        # Limpiar datos del día actual
         cur.execute("DELETE FROM monitor_iri WHERE fecha_datos = CURRENT_DATE")
-        # Insertar nuevos registros
         rows = []
         for _, row in df.iterrows():
             rows.append((
@@ -105,7 +104,6 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/processed", exist_ok=True)
 
     def _init_data():
-        # 1. Intentar cargar desde Postgres
         df_db = _load_from_db()
         if df_db is not None and len(df_db) > 0:
             df_db.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
@@ -114,7 +112,6 @@ async def lifespan(app: FastAPI):
         if os.path.exists(CSV_PATH):
             print(f"✅ CSV ya disponible: {CSV_PATH}")
             return
-        # 2. Correr motor en background
         try:
             import subprocess, sys
             print("🔄 Sin datos — corriendo motor_analitico.py en background...")
@@ -132,7 +129,6 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             print(f"⚠️  No se pudo correr motor: {e}")
 
-    # Arrancar en thread separado — no bloquea el healthcheck
     t = threading.Thread(target=_init_data, daemon=True)
     t.start()
     yield
@@ -166,34 +162,46 @@ def _df_to_records(df: pd.DataFrame) -> list:
     return df.fillna("").to_dict(orient="records")
 
 
+# ── CAMBIO 1: / redirige al dashboard ────────────────────────────────────────
+@app.get("/")
+def raiz():
+    """Redirige al dashboard principal."""
+    return RedirectResponse(url="/dashboard", status_code=302)
+
 
 @app.get("/health")
 def health_simple():
     """Healthcheck simple — siempre responde 200 inmediatamente."""
     return {"status": "ok"}
 
-# ANTES:
-@app.get("/")
-def health():
-    existe = os.path.exists(CSV_PATH)
-    ...
 
-# DESPUÉS — agregá este import arriba y reemplazá el endpoint:
-from fastapi.responses import HTMLResponse, RedirectResponse
-
-@app.get("/")
-def raiz():
-    return RedirectResponse(url="/dashboard", status_code=302)
-
-@app.get("/health")
-def health():
+@app.get("/info")
+def info():
+    """Health check con metadata del proyecto."""
     existe = os.path.exists(CSV_PATH)
     n = len(pd.read_csv(CSV_PATH)) if existe else 0
     return {
         "status": "ok",
         "proyecto": "Monitor IRI - Argentina",
-        ...
+        "version": "2.0",
+        "dataset_disponible": existe,
+        "total_organismos": n,
+        "repos_conectados": [
+            "github.com/Viny2030/justicia",
+            "github.com/Viny2030/monitor_legistativo",
+            "github.com/Viny2030/monitor_legistativo_senadores",
+        ],
+        "endpoints": {
+            "dashboard":  "/dashboard",
+            "datos":      "/datos",
+            "por_area":   "/por-area/{area}",
+            "top_riesgo": "/top-riesgo?n=10",
+            "resumen":    "/resumen",
+            "refresh":    "POST /refresh (header X-Refresh-Token)",
+            "docs":       "/docs",
+        },
     }
+
 
 @app.get("/datos")
 def get_datos(area: str = None, estado: str = None):
@@ -263,6 +271,9 @@ def refresh(x_refresh_token: str = Header(None)):
             [sys.executable, "motor_analitico.py"],
             capture_output=True, text=True, timeout=300,
         )
+        if result.returncode == 0 and os.path.exists(CSV_PATH):
+            df_new = pd.read_csv(CSV_PATH)
+            _save_to_db(df_new)
         return {
             "status": "ok" if result.returncode == 0 else "error",
             "stdout": result.stdout[-2000:],
@@ -274,6 +285,7 @@ def refresh(x_refresh_token: str = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── DASHBOARD HTML ────────────────────────────────────────────────────────────
 DASHBOARD_HTML = r"""<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -463,7 +475,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
             <th title="Riesgo Contratacion (peso 30%): proporcion de contrataciones directas vs licitaciones, irregularidades en compras publicas.">Riesgo Contratacion</th>
             <th title="Riesgo Operativo (peso 20%): inasistencia legislativa, mora judicial, vacancia de cargos, clearance rate.">Riesgo Operativo</th>
             <th title="Riesgo Datos (peso 15%): falta de transparencia, documentos inaccesibles, baja calidad de datos publicados.">Riesgo Datos</th>
-            <th title="Repositorio de origen del dato. Pasa el cursor para ver el nombre completo.">Fuente</th>
+            <th title="Repositorio de origen del dato.">Fuente</th>
           </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -473,7 +485,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="leyenda">
       <span><b>Score IRI</b> = Financiero x35% + Contratacion x30% + Operativo x20% + Datos x15%</span>
       <span><b>&#x1F534; ALTO</b> &ge; 60 &nbsp;&middot;&nbsp; <b>&#x1F7E1; MEDIO</b> 30-59 &nbsp;&middot;&nbsp; <b>&#x1F7E2; BAJO</b> &lt; 30</span>
-      <span>Pasa el cursor sobre cada columna para ver su descripcion</span>
     </div>
   </div>
 
@@ -481,21 +492,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <h2>&#x2139;&#xFE0F; Que mide cada dimension del IRI</h2>
     <div class="formula">
       <p style="margin-bottom:0.6rem">El <b>Indice de Riesgo Institucional (IRI)</b> es un score compuesto (0-100) que agrega cuatro dimensiones de riesgo:</p>
-      <p>
-        <span class="dim">Financiero 35%</span> Irregularidades en presupuesto, ejecucion del gasto y contratos. Fuente: Presupuesto Abierto / compr.ar (pendiente).
-      </p>
-      <p>
-        <span class="dim">Contratacion 30%</span> Proporcion de contrataciones directas vs licitaciones publicas, adjudicaciones irregulares. Fuente: compr.ar (pendiente).
-      </p>
-      <p>
-        <span class="dim">Operativo 20%</span> Para el Poder Judicial: mora procesal, clearance rate, IRA. Para el Legislativo: inasistencia (NAPE), participation_pct. Fuente: repos justicia y monitor_legistativo.
-      </p>
-      <p>
-        <span class="dim">Datos 15%</span> Accesibilidad documental (IAD), publicacion de informacion, calidad de datos abiertos. Fuente: auditoria manual + repos especializados.
-      </p>
+      <p><span class="dim">Financiero 35%</span> Irregularidades en presupuesto, ejecucion del gasto y contratos.</p>
+      <p><span class="dim">Contratacion 30%</span> Proporcion de contrataciones directas vs licitaciones publicas.</p>
+      <p><span class="dim">Operativo 20%</span> Mora procesal, inasistencia legislativa, participation_pct senadores.</p>
+      <p><span class="dim">Datos 15%</span> Accesibilidad documental, calidad de datos abiertos.</p>
       <p style="margin-top:0.6rem;color:#475569">
-        <span class="tag-real">&#x2705; Dato real</span> = proviene de un repo especializado (justicia / monitor_legistativo / senadores) &nbsp;&nbsp;
-        <span class="tag-sint">&#x26A0;&#xFE0F; Sintetico</span> = generado con seed fija hasta conectar compr.ar
+        <span class="tag-real">&#x2705; Dato real</span> = proviene de repo especializado &nbsp;&nbsp;
+        <span class="tag-sint">&#x26A0;&#xFE0F; Sintetico</span> = generado con seed fija
       </p>
     </div>
   </div>
@@ -513,16 +516,16 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <div class="manual-wrap">
 
   <h2>&#x2139;&#xFE0F; &iquest;Qu&eacute; es el Monitor IRI?</h2>
-  <p>El <b>Monitor de Riesgo Institucional (IRI)</b> es una herramienta acad&eacute;mica de c&oacute;digo abierto que cuantifica niveles de riesgo de corrupci&oacute;n e ineficiencia en organismos del Estado argentino. Combina datos de cinco repositorios especializados para construir un &iacute;ndice compuesto que permite identificar patrones de riesgo en tiempo real.</p>
+  <p>El <b>Monitor de Riesgo Institucional (IRI)</b> es una herramienta acad&eacute;mica de c&oacute;digo abierto que cuantifica niveles de riesgo de corrupci&oacute;n e ineficiencia en organismos del Estado argentino.</p>
 
   <h2>&#x1F9EE; F&oacute;rmula IRI</h2>
   <div class="formula-big">IRI = R_Financiero &times; 35% &nbsp;+&nbsp; R_Contrataci&oacute;n &times; 30% &nbsp;+&nbsp; R_Operativo &times; 20% &nbsp;+&nbsp; R_Datos &times; 15%</div>
   <table class="manual-table">
     <tr><th>Componente</th><th>Peso</th><th>Descripci&oacute;n</th></tr>
-    <tr><td>R_Financiero</td><td>35%</td><td>&Iacute;ndice de fen&oacute;meno corruptivo promedio del flujo BORA&rarr;TGN. En judicial: IRA + tasa de mora procesal.</td></tr>
-    <tr><td>R_Contrataci&oacute;n</td><td>30%</td><td>Proporci&oacute;n de contrataciones directas vs. licitaciones en COMPR.AR / CONTRAT.AR.</td></tr>
-    <tr><td>R_Operativo</td><td>20%</td><td>Inasistencia legislativa (NAPE), tasa de vacancia judicial, participation_pct en el Senado.</td></tr>
-    <tr><td>R_Datos</td><td>15%</td><td>Calidad y disponibilidad de informaci&oacute;n p&uacute;blica publicada por el organismo.</td></tr>
+    <tr><td>R_Financiero</td><td>35%</td><td>Irregularidades presupuestarias, desvios en ejecucion del gasto.</td></tr>
+    <tr><td>R_Contrataci&oacute;n</td><td>30%</td><td>Proporci&oacute;n de contrataciones directas vs. licitaciones.</td></tr>
+    <tr><td>R_Operativo</td><td>20%</td><td>Inasistencia legislativa, tasa de vacancia judicial, participation_pct senado.</td></tr>
+    <tr><td>R_Datos</td><td>15%</td><td>Calidad y disponibilidad de informaci&oacute;n p&uacute;blica.</td></tr>
   </table>
   <table class="manual-table">
     <tr><th>Score IRI</th><th>Nivel de riesgo</th></tr>
@@ -531,60 +534,39 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>60 &ndash; 100</td><td>&#x1F534; ALTO &mdash; alerta de riesgo institucional</td></tr>
   </table>
 
-  <h2>&#x1F3D7; Arquitectura &mdash; Repositorios integrados</h2>
+  <h2>&#x1F3D7; Repositorios integrados</h2>
   <table class="manual-table">
     <tr><th>Repositorio</th><th>Datos que aporta</th></tr>
-    <tr><td>monitor (central)</td><td>FastAPI principal. Dashboard HTML con Plotly.js. Orquesta todos los repos v&iacute;a connector.py.</td></tr>
-    <tr><td>justicia</td><td>IRA por juzgado, vacantes judiciales, magistrados. Endpoint: <code>/operativo/data</code></td></tr>
-    <tr><td>monitor_legistativo</td><td>NAPE, IQP, asistencia, proyectos &mdash; C&aacute;mara de Diputados. Endpoints: <code>/api/kpis</code>, <code>/api/bloques</code></td></tr>
-    <tr><td>monitor_legistativo_senadores</td><td>Participaci&oacute;n, reporte por partido &mdash; Senado. Endpoints: <code>/senado/senadores</code>, <code>/senado/reporte-partido</code></td></tr>
-    <tr><td>monitor_contratos_v2</td><td>BORA + COMPR.AR CKAN + TGN + AFIP SOA. Detecci&oacute;n de fen&oacute;meno corruptivo. Endpoint: <code>/api/licitaciones/datos</code></td></tr>
-    <tr><td>gob_bo_comprar_tgn</td><td>COMPR.AR + Tesorer&iacute;a General de la Naci&oacute;n (ejecuci&oacute;n presupuestaria AR). Endpoint: <code>/api/licitaciones/datos</code></td></tr>
+    <tr><td>monitor (central)</td><td>FastAPI principal. Dashboard HTML con Plotly.js.</td></tr>
+    <tr><td>justicia</td><td>IRA por juzgado, vacantes judiciales, magistrados.</td></tr>
+    <tr><td>monitor_legistativo</td><td>NAPE, IQP, asistencia &mdash; C&aacute;mara de Diputados.</td></tr>
+    <tr><td>monitor_legistativo_senadores</td><td>Participaci&oacute;n, reporte por partido &mdash; Senado.</td></tr>
+    <tr><td>monitor_contratos_v2</td><td>BORA + COMPR.AR + TGN. Detecci&oacute;n de irregularidades.</td></tr>
+    <tr><td>gob_bo_comprar_tgn</td><td>Tesorer&iacute;a General de la Naci&oacute;n Argentina.</td></tr>
   </table>
-  <div class="info-box ok">&#x2705; <b>Nota:</b> <code>gob_bo_comprar_tgn</code> NO es un proyecto boliviano. Conecta con la <b>Tesorer&iacute;a General de la Naci&oacute;n de Argentina</b> y con COMPR.AR para el an&aacute;lisis de ejecuci&oacute;n presupuestaria del Ejecutivo Nacional.</div>
-
-  <h2>&#x1F4E6; Estrategia de ingesta</h2>
-  <ul>
-    <li><b>1. Railway API</b> &mdash; si la variable de entorno est&aacute; definida y el servicio responde</li>
-    <li><b>2. GitHub raw</b> &mdash; JSON/CSV directos del repo (siempre disponible como segunda opci&oacute;n)</li>
-    <li><b>3. Fallback sint&eacute;tico</b> &mdash; datos reproducibles con semilla fija (<code>np.random.seed</code>) para garantizar disponibilidad del dashboard</li>
-  </ul>
 
   <h2>&#x1F511; Variables de entorno</h2>
-  <div class="info-box">Todas son opcionales. Si no est&aacute;n definidas, el sistema usa GitHub raw o fallback sint&eacute;tico autom&aacute;ticamente.</div>
   <table class="manual-table">
     <tr><th>Variable</th><th>Descripci&oacute;n</th></tr>
     <tr><td>JUSTICIA_API_URL</td><td>URL del servicio justicia en Railway</td></tr>
-    <tr><td>LEGISTATIVO_API_URL</td><td>URL del servicio monitor_legistativo (Diputados) en Railway</td></tr>
-    <tr><td>SENADORES_API_URL</td><td>URL del servicio monitor_legistativo_senadores (Senado) en Railway</td></tr>
-    <tr><td>CONTRATOS_AR_API_URL</td><td>URL de monitor_contratos_v2 (BORA + COMPR.AR + TGN AR) en Railway</td></tr>
-    <tr><td>TGN_AR_API_URL</td><td>URL de gob_bo_comprar_tgn (Tesorer&iacute;a General de la Naci&oacute;n AR) en Railway</td></tr>
-    <tr><td>REFRESH_TOKEN</td><td>Token para el endpoint <code>POST /refresh</code> (por defecto: <code>dev</code>)</td></tr>
+    <tr><td>LEGISTATIVO_API_URL</td><td>URL del servicio monitor_legistativo en Railway</td></tr>
+    <tr><td>SENADORES_API_URL</td><td>URL del servicio senadores en Railway</td></tr>
+    <tr><td>CONTRATOS_AR_API_URL</td><td>URL de monitor_contratos_v2 en Railway</td></tr>
+    <tr><td>TGN_AR_API_URL</td><td>URL de gob_bo_comprar_tgn en Railway</td></tr>
+    <tr><td>REFRESH_TOKEN</td><td>Token para <code>POST /refresh</code> (default: <code>dev</code>)</td></tr>
   </table>
-  <div class="info-box warn">&#x26A0;&#xFE0F; <b>Atenci&oacute;n:</b> <code>TGN_AR_API_URL</code> reemplaza a <code>CONTRATOS_BO_API_URL</code> usada en versiones anteriores. Si ten&eacute;s la variable vieja configurada en Railway, actualizala.</div>
-
-  <h2>&#x1F680; Instalaci&oacute;n local</h2>
-  <h3>Procfile (Railway)</h3>
-  <div class="info-box"><code>web: uvicorn main:app --host 0.0.0.0 --port $PORT</code></div>
-  <h3>Pasos</h3>
-  <ul>
-    <li><code>git clone https://github.com/Viny2030/monitor.git &amp;&amp; cd monitor</code></li>
-    <li><code>python -m venv .venv &amp;&amp; .venv\Scripts\activate</code></li>
-    <li><code>pip install -r requirements.txt</code></li>
-    <li><code>python motor_analitico.py</code> &mdash; genera <code>data/processed/monitor_completo.csv</code></li>
-    <li><code>uvicorn main:app --reload --port 8000</code></li>
-  </ul>
 
   <h2>&#x1F4CB; Endpoints de la API</h2>
   <table class="manual-table">
     <tr><th>Endpoint</th><th>Descripci&oacute;n</th></tr>
+    <tr><td>GET /</td><td>Redirige a /dashboard</td></tr>
     <tr><td>GET /dashboard</td><td>Este dashboard</td></tr>
-    <tr><td>GET /datos</td><td>Dataset completo en JSON (acepta ?area= y ?estado=)</td></tr>
+    <tr><td>GET /datos</td><td>Dataset completo en JSON</td></tr>
     <tr><td>GET /por-area/{area}</td><td>Organismos filtrados por &aacute;rea</td></tr>
     <tr><td>GET /top-riesgo?n=10</td><td>Top N organismos de mayor IRI</td></tr>
     <tr><td>GET /resumen</td><td>Estad&iacute;sticas globales por &aacute;rea</td></tr>
-    <tr><td>POST /refresh</td><td>Regenera el CSV (requiere header <code>X-Refresh-Token</code>)</td></tr>
-    <tr><td>GET /docs</td><td>Documentaci&oacute;n interactiva Swagger UI</td></tr>
+    <tr><td>POST /refresh</td><td>Regenera el CSV (requiere <code>X-Refresh-Token</code>)</td></tr>
+    <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
 
 </div>
@@ -594,9 +576,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <div class="tab-page" id="page-autor">
   <div class="section" style="max-width:860px;margin-top:1.5rem">
     <div class="autor-card">
+      <!-- CAMBIO 2: foto desde raiz del repo -->
       <img class="autor-foto"
            src="https://raw.githubusercontent.com/Viny2030/monitor/main/foto.jpg"
-           alt="Ph.D. Vicente Humberto Monteverde"/>
+           alt="Ph.D. Vicente Humberto Monteverde"
+           onerror="this.style.display='none'"/>
       <div class="autor-info">
         <h3>Ph.D. Vicente Humberto Monteverde</h3>
         <div class="subtitulo">Doctor en Ciencias Econ&oacute;micas &middot; Investigador en Transparencia P&uacute;blica</div>
@@ -691,11 +675,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <footer>
   Monitor IRI v2.0 &middot;
   <a href="https://github.com/Viny2030/monitor" target="_blank">github.com/Viny2030/monitor</a> &middot;
-  Datos actualizados via <code>POST /refresh</code>
+  Datos actualizados diariamente via GitHub Actions
 </footer>
 
 <script>
-  /* === NAV TABS === */
   function showPage(name, btn) {
     document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
@@ -865,7 +848,6 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     }).join('');
   }
 
-  /* === MODAL DONACION === */
   function openModal()  { document.getElementById('modal-donacion').classList.add('active'); }
   function closeModal() { document.getElementById('modal-donacion').classList.remove('active'); }
   document.getElementById('modal-donacion').addEventListener('click', function(e) {
