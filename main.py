@@ -172,32 +172,28 @@ def health_simple():
     """Healthcheck simple — siempre responde 200 inmediatamente."""
     return {"status": "ok"}
 
+# ANTES:
 @app.get("/")
+def health():
+    existe = os.path.exists(CSV_PATH)
+    ...
+
+# DESPUÉS — agregá este import arriba y reemplazá el endpoint:
+from fastapi.responses import HTMLResponse, RedirectResponse
+
+@app.get("/")
+def raiz():
+    return RedirectResponse(url="/dashboard", status_code=302)
+
+@app.get("/health")
 def health():
     existe = os.path.exists(CSV_PATH)
     n = len(pd.read_csv(CSV_PATH)) if existe else 0
     return {
         "status": "ok",
         "proyecto": "Monitor IRI - Argentina",
-        "version": "2.0",
-        "dataset_disponible": existe,
-        "total_organismos": n,
-        "repos_conectados": [
-            "github.com/Viny2030/justicia",
-            "github.com/Viny2030/monitor_legistativo",
-            "github.com/Viny2030/monitor_legistativo_senadores",
-        ],
-        "endpoints": {
-            "dashboard":  "/dashboard",
-            "datos":      "/datos",
-            "por_area":   "/por-area/{area}",
-            "top_riesgo": "/top-riesgo?n=10",
-            "resumen":    "/resumen",
-            "refresh":    "POST /refresh (header X-Refresh-Token)",
-            "docs":       "/docs",
-        },
+        ...
     }
-
 
 @app.get("/datos")
 def get_datos(area: str = None, estado: str = None):
