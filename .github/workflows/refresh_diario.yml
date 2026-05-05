@@ -2,8 +2,8 @@ name: Refresh Diario Monitor IRI
 
 on:
   schedule:
-    - cron: '0 10 * * *'   # 10:00 UTC = 07:00 ARG
-  workflow_dispatch:        # permite correrlo manualmente desde GitHub
+    - cron: '0 10 * * *'
+  workflow_dispatch:
 
 jobs:
   refresh:
@@ -34,33 +34,26 @@ jobs:
 
       - name: Notificar exito
         if: needs.refresh.result == 'success'
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.MAIL_USER }}
-          password: ${{ secrets.MAIL_PASS }}
-          to: viny01958@gmail.com
-          from: Monitor IRI <${{ secrets.MAIL_USER }}>
-          subject: "✅ Refresh OK - Monitor IRI ${{ steps.fecha.outputs.fecha }}"
-          body: |
-            El dataset del Monitor IRI fue regenerado correctamente.
-            Fecha: ${{ steps.fecha.outputs.fecha }}
-            Ver: https://monitor-production-f053.up.railway.app/dashboard
+        run: |
+          curl -s -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"from\": \"Monitor IRI <onboarding@resend.dev>\",
+              \"to\": \"viny01958@gmail.com\",
+              \"subject\": \"✅ Refresh OK - Monitor IRI ${{ steps.fecha.outputs.fecha }}\",
+              \"text\": \"El dataset fue regenerado correctamente.\nVer: https://monitor-production-f053.up.railway.app/dashboard\"
+            }"
 
       - name: Notificar fallo
         if: needs.refresh.result == 'failure'
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.MAIL_USER }}
-          password: ${{ secrets.MAIL_PASS }}
-          to: viny01958@gmail.com
-          from: Monitor IRI <${{ secrets.MAIL_USER }}>
-          subject: "❌ Refresh FALLÓ - Monitor IRI ${{ steps.fecha.outputs.fecha }}"
-          body: |
-            El refresh diario del Monitor IRI falló.
-            Ver logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          curl -s -X POST https://api.resend.com/emails \
+            -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"from\": \"Monitor IRI <onboarding@resend.dev>\",
+              \"to\": \"viny01958@gmail.com\",
+              \"subject\": \"❌ Refresh FALLÓ - Monitor IRI ${{ steps.fecha.outputs.fecha }}\",
+              \"text\": \"El refresh diario falló.\nVer logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }"
