@@ -1,0 +1,37 @@
+name: Test Mail
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verificar secrets cargados
+        run: |
+          if [ -z "${{ secrets.MAIL_USER }}" ]; then
+            echo "❌ MAIL_USER está vacío"
+          else
+            echo "✅ MAIL_USER cargado"
+          fi
+          if [ -z "${{ secrets.MAIL_PASS }}" ]; then
+            echo "❌ MAIL_PASS está vacío"
+          else
+            echo "✅ MAIL_PASS cargado (longitud: ${#PASS})"
+          fi
+        env:
+          PASS: ${{ secrets.MAIL_PASS }}
+
+      - name: Test envío mail
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 587
+          starttls: true
+          secure: false
+          username: ${{ secrets.MAIL_USER }}
+          password: ${{ secrets.MAIL_PASS }}
+          to: viny01958@gmail.com
+          from: ${{ secrets.MAIL_USER }}
+          subject: "Test mail GitHub Actions"
+          body: "Si recibís esto, funciona."
