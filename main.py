@@ -295,18 +295,23 @@ def refresh(x_refresh_token: str = Header(None)):
     if x_refresh_token != REFRESH_TOKEN:
         raise HTTPException(status_code=401, detail="Token invalido")
     import subprocess, sys
+    LOG_PATH = "data/processed/refresh.log"
+    os.makedirs("data/processed", exist_ok=True)
     try:
-        result = subprocess.run(
-            [sys.executable, "motor_analitico.py"],
-            capture_output=True, text=True, timeout=300,
-        )
+        with open(LOG_PATH, "w", encoding="utf-8") as log_f:
+            result = subprocess.run(
+                [sys.executable, "motor_analitico.py"],
+                stdout=log_f, stderr=log_f,
+                timeout=300,
+            )
+        log_content = open(LOG_PATH, encoding="utf-8", errors="replace").read()
         if result.returncode == 0 and os.path.exists(CSV_PATH):
             df_new = pd.read_csv(CSV_PATH)
             _save_to_db(df_new)
         return {
             "status": "ok" if result.returncode == 0 else "error",
-            "stdout": result.stdout[-2000:],
-            "stderr": result.stderr[-500:],
+            "stdout": "",
+            "stderr": log_content[-4000:],
         }
     except subprocess.TimeoutExpired:
         raise HTTPException(status_code=504, detail="Motor timeout (>5min)")
