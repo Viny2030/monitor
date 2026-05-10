@@ -261,7 +261,35 @@ def get_resumen():
     return {"global": global_stats, "por_area": por_area, "fuentes_de_datos": fuentes}
 
 
-@app.post("/refresh")
+@app.post("/reset-db")
+def reset_db(x_refresh_token: str = Header(None)):
+    """Limpia la DB y el CSV cacheado para forzar regeneración limpia."""
+    if x_refresh_token != REFRESH_TOKEN:
+        raise HTTPException(status_code=401, detail="Token invalido")
+    resultados = []
+    # 1. Limpiar CSV en disco
+    if os.path.exists(CSV_PATH):
+        os.remove(CSV_PATH)
+        resultados.append(f"CSV eliminado: {CSV_PATH}")
+    else:
+        resultados.append("CSV no existia en disco")
+    # 2. Limpiar tabla Postgres
+    conn = _get_conn()
+    if conn:
+        try:
+            cur = conn.cursor()
+            cur.execute("DELETE FROM monitor_iri")
+            filas = cur.rowcount
+            conn.commit()
+            conn.close()
+            resultados.append(f"DB limpiada: {filas} filas borradas")
+        except Exception as e:
+            resultados.append(f"DB error: {e}")
+    else:
+        resultados.append("DB no disponible (sin DATABASE_URL)")
+    return {"status": "ok", "acciones": resultados}
+
+
 def refresh(x_refresh_token: str = Header(None)):
     if x_refresh_token != REFRESH_TOKEN:
         raise HTTPException(status_code=401, detail="Token invalido")
