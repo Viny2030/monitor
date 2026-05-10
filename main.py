@@ -297,12 +297,16 @@ def refresh(x_refresh_token: str = Header(None)):
     import subprocess, sys
     LOG_PATH = "data/processed/refresh.log"
     os.makedirs("data/processed", exist_ok=True)
+    # Heredar el entorno completo — asegura que TGN_AR_API_URL y CONTRATOS_AR_API_URL
+    # lleguen al subprocess (en Railway los subprocesos no siempre heredan env vars)
+    env = os.environ.copy()
     try:
         with open(LOG_PATH, "w", encoding="utf-8") as log_f:
             result = subprocess.run(
                 [sys.executable, "motor_analitico.py"],
                 stdout=log_f, stderr=log_f,
                 timeout=300,
+                env=env,
             )
         log_content = open(LOG_PATH, encoding="utf-8", errors="replace").read()
         if result.returncode == 0 and os.path.exists(CSV_PATH):
