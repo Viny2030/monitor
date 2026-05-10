@@ -10,4 +10,4 @@ psycopg2-binary
 
 # Testing
 pytest
-pytest-asyncio
+pytest-asyncioopenpyxl
