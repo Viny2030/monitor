@@ -31,12 +31,21 @@ from io import StringIO
 
 log = logging.getLogger(__name__)
 
-# ── URLs configurables por env var ────────────────────────────────────────────
-LEGISTATIVO_API   = os.getenv("LEGISTATIVO_API_URL", "").rstrip("/")
-SENADORES_API     = os.getenv("SENADORES_API_URL",   "").rstrip("/")
-JUSTICIA_API      = os.getenv("JUSTICIA_API_URL",    "").rstrip("/")
-CONTRATOS_AR_API  = os.getenv("CONTRATOS_AR_API_URL","").rstrip("/")
-TGN_AR_API        = os.getenv("TGN_AR_API_URL",      "").rstrip("/")
+# ── URLs configurables por env var — lazy (leídas en runtime, no en import) ──
+# NO asignar a constantes de módulo: si el subprocess de Railway inyecta las
+# vars después del import, las constantes quedarían vacías para siempre.
+# Usar siempre _api_url("VAR") dentro de las funciones.
+
+def _api_url(var: str) -> str:
+    """Lee la env var en el momento de la llamada (nunca en import-time)."""
+    return os.environ.get(var, "").rstrip("/")
+
+# Aliases de conveniencia — llamar como función, no como constante
+def _legistativo_api()  -> str: return _api_url("LEGISTATIVO_API_URL")
+def _senadores_api()    -> str: return _api_url("SENADORES_API_URL")
+def _justicia_api()     -> str: return _api_url("JUSTICIA_API_URL")
+def _contratos_ar_api() -> str: return _api_url("CONTRATOS_AR_API_URL")
+def _tgn_ar_api()       -> str: return _api_url("TGN_AR_API_URL")
 
 TIMEOUT = 12
 HEADERS = {"User-Agent": "MonitorIRI/1.0 (github.com/Viny2030/monitor)"}
@@ -123,8 +132,8 @@ def _col_find(df: pd.DataFrame, keywords: list) -> str | None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_justicia_juzgados() -> list | None:
-    if JUSTICIA_API:
-        data = _get_json(f"{JUSTICIA_API}/operativo/data")
+    if _justicia_api():
+        data = _get_json(f"{_justicia_api()}/operativo/data")
         if data:
             return data if isinstance(data, list) else data.get("juzgados")
     return _get_json(f"{_JUSTICIA_RAW}/juzgados_nacional.json")
@@ -259,8 +268,8 @@ def _fallback_judicial() -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_legis_kpis() -> dict | None:
-    if LEGISTATIVO_API:
-        data = _get_json(f"{LEGISTATIVO_API}/api/kpis")
+    if _legistativo_api():
+        data = _get_json(f"{_legistativo_api()}/api/kpis")
         if data:
             return data
     return {
@@ -271,8 +280,8 @@ def _fetch_legis_kpis() -> dict | None:
 
 
 def _fetch_legis_bloques() -> list | None:
-    if LEGISTATIVO_API:
-        data = _get_json(f"{LEGISTATIVO_API}/api/bloques")
+    if _legistativo_api():
+        data = _get_json(f"{_legistativo_api()}/api/bloques")
         if data:
             return data.get("bloques", [])
     return None
@@ -372,8 +381,8 @@ def _fallback_legislative() -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_senado_nomina() -> list | None:
-    if SENADORES_API:
-        data = _get_json(f"{SENADORES_API}/senado/senadores")
+    if _senadores_api():
+        data = _get_json(f"{_senadores_api()}/senado/senadores")
         if data and data.get("ok"):
             senadores = data.get("senadores", [])
             if senadores:
@@ -387,8 +396,8 @@ def _fetch_senado_nomina() -> list | None:
 
 
 def _fetch_senado_partidos() -> list | None:
-    if SENADORES_API:
-        data = _get_json(f"{SENADORES_API}/senado/reporte-partido")
+    if _senadores_api():
+        data = _get_json(f"{_senadores_api()}/senado/reporte-partido")
         if data and data.get("ok"):
             partidos = data.get("partidos", [])
             if partidos:
@@ -546,12 +555,14 @@ def build_contratos_ar_df() -> pd.DataFrame:
       R_Datos        ← 25 (BORA + COMPR.AR = datos relativamente accesibles)
     """
     log.info("Cargando contratos Argentina (monitor_contratos_v2)...")
+    _contratos_url = _contratos_ar_api()
+    log.info(f"  CONTRATOS_AR_API_URL={_contratos_url!r}")
 
-    if not CONTRATOS_AR_API:
+    if not _contratos_url:
         log.warning("  CONTRATOS_AR_API_URL no definida — usando fallback sintético")
         return build_ejecutivo_df()
 
-    data = _get_json(f"{CONTRATOS_AR_API}/api/licitaciones/datos")
+    data = _get_json(f"{_contratos_url}/api/licitaciones/datos")
 
     if not data or data.get("sin_datos"):
         log.warning("  contratos AR: sin datos disponibles — usando fallback")
@@ -719,12 +730,14 @@ def build_tgn_df() -> pd.DataFrame:
       R_Datos        ← 30 (TGN publica datos de ejecución presupuestaria)
     """
     log.info("Cargando datos TGN Argentina (gob_bo_comprar_tgn — Tesorería General de la Nación)...")
+    _tgn_url = _tgn_ar_api()
+    log.info(f"  TGN_AR_API_URL={_tgn_url!r}")
 
-    if not TGN_AR_API:
+    if not _tgn_url:
         log.warning("  TGN_AR_API_URL no definida — usando fallback sintético")
         return _fallback_tgn()
 
-    data = _get_json(f"{TGN_AR_API}/api/licitaciones/datos")
+    data = _get_json(f"{_tgn_url}/api/licitaciones/datos")
 
     if not data or data.get("sin_datos"):
         log.warning("  TGN AR: sin datos — usando fallback")
