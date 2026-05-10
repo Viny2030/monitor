@@ -113,7 +113,7 @@ def _get_xlsx(url: str) -> pd.DataFrame | None:
         from io import BytesIO
         return pd.read_excel(BytesIO(r.content))
     except Exception as e:
-        log.debug(f"  GET XLSX {url[-60:]}: {e}")
+        log.warning(f"  GET XLSX {url[-80:]}: {e}")
     return None
 
 
@@ -130,6 +130,8 @@ def _find_latest_contratos_reportes(days_back: int = 21) -> list[pd.DataFrame]:
         fecha = (today - _dt.timedelta(days=delta)).strftime("%Y-%m-%d")
         ym = fecha[:7]
         url = f"{_CONTRATOS_RAW}/{ym}/reporte_{fecha}.xlsx"
+        if delta == 0:
+            log.info(f"  contratos: URL base → {url}")
         df = _get_xlsx(url)
         if df is not None and not df.empty:
             df["_fecha"] = fecha
