@@ -159,7 +159,13 @@ def build_judicial_df() -> pd.DataFrame:
                 ira       = float(j.get("ira") or j.get("IRA") or 0)
                 mora_pct  = float(j.get("mora_pct") or j.get("pct_mora") or 0)
 
-                r_fin = min(100, max(0, ira * 0.8 + mora_pct * 0.2))
+                # Piso mínimo: si ira y mora_pct son 0, los datos no llegaron.
+                # Usamos tasa_vacancia como proxy mínimo para no mostrar riesgo=0
+                # en juzgados con datos incompletos (engañoso hacia abajo).
+                ira_efectiva  = ira  if ira  > 0 else round(tasa_vacancia * 0.5, 1)
+                mora_efectiva = mora_pct if mora_pct > 0 else round(tasa_vacancia * 0.3, 1)
+
+                r_fin = min(100, max(0, ira_efectiva * 0.8 + mora_efectiva * 0.2))
                 # r_con varía por fuero: penal tiene menos discrecionalidad
                 # en compras que civil o federal
                 fuero_lower = str(fuero).lower()
@@ -171,8 +177,8 @@ def build_judicial_df() -> pd.DataFrame:
                     r_con = 42.0
                 else:
                     r_con = 40.0
-                r_ope = min(100, max(0, ira))
-                r_dat = min(100, max(0, tasa_vacancia + mora_pct * 0.5))
+                r_ope = min(100, max(0, ira_efectiva))
+                r_dat = min(100, max(0, tasa_vacancia + mora_efectiva * 0.5))
 
                 rows.append({
                     "Organismo": nombre,
@@ -188,17 +194,19 @@ def build_judicial_df() -> pd.DataFrame:
                 log.debug(f"  juzgado skip: {e}")
                 continue
 
+    # Organismos institucionales: diferenciados por tipo para evitar scores idénticos
     institucionales = [
-        ("Corte Suprema de Justicia",          "Control y Justicia"),
-        ("Consejo de la Magistratura",          "Control y Justicia"),
-        ("Ministerio Público Fiscal",           "Control y Justicia"),
-        ("Ministerio Público de la Defensa",    "Control y Justicia"),
+        ("Corte Suprema de Justicia",       "Control y Justicia", 1.4, 45.0, 1.6, 1.0),
+        ("Consejo de la Magistratura",      "Control y Justicia", 1.2, 42.0, 1.7, 1.1),
+        ("Ministerio Público Fiscal",       "Control y Justicia", 1.1, 38.0, 1.4, 0.9),
+        ("Ministerio Público de la Defensa","Control y Justicia", 1.0, 36.0, 1.3, 0.8),
     ]
-    for org, area in institucionales:
-        r_fin = max(20, min(80, tasa_vacancia * 1.2))
-        r_con = 40.0
-        r_ope = max(25, min(75, tasa_vacancia * 1.5))
-        r_dat = max(20, min(70, tasa_vacancia))
+    # Multiplicadores: (r_fin_mult, r_con_base, r_ope_mult, r_dat_mult)
+    for org, area, fm, r_con_base, om, dm in institucionales:
+        r_fin = max(20, min(80, tasa_vacancia * fm))
+        r_con = r_con_base
+        r_ope = max(25, min(75, tasa_vacancia * om))
+        r_dat = max(20, min(70, tasa_vacancia * dm))
         rows.append({
             "Organismo": org, "Area": area,
             "Riesgo Financiero": round(r_fin, 1),
