@@ -160,7 +160,17 @@ def build_judicial_df() -> pd.DataFrame:
                 mora_pct  = float(j.get("mora_pct") or j.get("pct_mora") or 0)
 
                 r_fin = min(100, max(0, ira * 0.8 + mora_pct * 0.2))
-                r_con = 40.0
+                # r_con varía por fuero: penal tiene menos discrecionalidad
+                # en compras que civil o federal
+                fuero_lower = str(fuero).lower()
+                if "penal" in fuero_lower:
+                    r_con = 35.0
+                elif "civil" in fuero_lower:
+                    r_con = 38.0
+                elif "federal" in fuero_lower:
+                    r_con = 42.0
+                else:
+                    r_con = 40.0
                 r_ope = min(100, max(0, ira))
                 r_dat = min(100, max(0, tasa_vacancia + mora_pct * 0.5))
 
@@ -457,13 +467,24 @@ def build_senado_df() -> pd.DataFrame:
                 part_p = participation_avg
             inasist_p = round(100 - part_p, 1)
             r_ope = round(min(100, inasist_p * 1.1), 1)
+            # Si ninguna clave de participación existe en el dict del partido,
+            # el dato viene del promedio global — lo indicamos en Fuente
+            tiene_dato_propio = any(
+                p.get(k) is not None
+                for k in ("participation_pct", "participacion_prom", "asistencia_pct")
+            )
+            fuente_partido = (
+                "senadores/reporte_partido_senado CSV"
+                if tiene_dato_propio
+                else "senadores/participation_avg_global"
+            )
             rows.append({
                 "Organismo": f"Senado — {partido} ({bancas} bancas)",
                 "Area": "Poder Legislativo",
                 "Riesgo Financiero": 35.0, "Riesgo Contratación": 35.0,
                 "Riesgo Operativo": r_ope, "Riesgo Datos": 40.0,
                 "IRI (Score)": _iri(35.0, 35.0, r_ope, 40.0),
-                "Fuente": "senadores/reporte_partido_senado CSV",
+                "Fuente": fuente_partido,
             })
 
     if not rows:
@@ -568,8 +589,8 @@ def build_contratos_ar_df() -> pd.DataFrame:
                 if col_tipo:
                     directos = grp[col_tipo].astype(str).str.upper().str.contains(
                         "DIRECT|CONTRAT", na=False).sum()
-                r_con = round(min(100, (directos / total * 100 * 1.5)
-                                  if total > 0 else r_con_global), 1)
+                pct_directos_c = (directos / total * 100) if total > 0 else r_con_global
+                r_con = round(min(100, pct_directos_c * 1.5), 1)
                 rows.append({
                     "Organismo": org_str[:80],
                     "Area": "Administración Central",
@@ -741,8 +762,8 @@ def build_tgn_df() -> pd.DataFrame:
                 if col_tipo:
                     directos = grp[col_tipo].astype(str).str.upper().str.contains(
                         "DIRECT|CONTRAT|MENOR", na=False).sum()
-                r_con = round(min(100, (directos / total * 100 * 1.3)
-                                  if total > 0 else r_con_global), 1)
+                pct_directos_t = (directos / total * 100) if total > 0 else r_con_global
+                r_con = round(min(100, pct_directos_t * 1.3), 1)
                 rows.append({
                     "Organismo": org_str[:80],
                     "Area": "Tesorería General de la Nación",
