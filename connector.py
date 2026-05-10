@@ -713,8 +713,8 @@ def build_tgn_df() -> pd.DataFrame:
     a partir de datos reales de gob_bo_comprar_tgn (Tesorería General de la Nación).
 
     Dimensiones IRI:
-      R_Financiero   ← indice_fenomeno_corruptivo promedio (flujo TGN→COMPR.AR)
-      R_Contratacion ← % procesos directos vs licitaciones
+      R_Financiero   ← indice_riesgo_licit promedio del flujo (campo real del API)
+      R_Contratacion ← % procesos directos vs licitaciones (flujo + comprar)
       R_Operativo    ← placeholder 42
       R_Datos        ← 30 (TGN publica datos de ejecución presupuestaria)
     """
@@ -733,58 +733,123 @@ def build_tgn_df() -> pd.DataFrame:
     rows = []
 
     # ── Métricas globales del flujo ───────────────────────────────────────────
+    # Campos reales: indice_riesgo_licit (float como string), nivel_riesgo_licit
     flujo = data.get("flujo", [])
     r_fin_global = 50.0
     r_con_global = 45.0
 
     if flujo:
-        indices = []
+        indices    = []
         alto_count = 0
         for f in flujo:
             try:
-                idx = float(f.get("indice_fenomeno_corruptivo", 0))
-                indices.append(idx)
+                idx = float(f.get("indice_riesgo_licit", 0))
+                indices.append(idx * 10)  # escala 0-11 → normalizar a 0-100
             except (ValueError, TypeError):
                 pass
-            if str(f.get("nivel_riesgo_teorico", "")).lower() == "alto":
+            if str(f.get("nivel_riesgo_licit", "")).lower() in ("alto", "medio-alto"):
                 alto_count += 1
         if indices:
             r_fin_global = round(min(100, sum(indices) / len(indices)), 1)
         if flujo:
             r_con_global = round(min(100, alto_count / len(flujo) * 100), 1)
 
-    # ── Organismos desde datos COMPR.AR / TGN ejecución ──────────────────────
-    source_data = data.get("comprar", []) or data.get("tgn", [])
-    if source_data:
-        df_src  = pd.DataFrame(source_data)
-        col_org = _col_find(df_src, ["organismo", "jurisdiccion", "entidad", "unidad", "ministerio"])
-        col_tipo = _col_find(df_src, ["tipo", "modalidad", "proceso"])
+    # ── Organismos desde flujo (organismo_contratante) ───────────────────────
+    organismos_vistos = set()
+    for f in flujo:
+        org_str = str(f.get("organismo_contratante", "")).strip()
+        if not org_str or org_str in ("", "nan"):
+            continue
+        # Normalizar nombre largo
+        org_corto = org_str.split(" - ")[0][:80]
+        if org_corto in organismos_vistos:
+            continue
+        organismos_vistos.add(org_corto)
+        tipo = str(f.get("tipo_proceso_bora", "")).upper()
+        es_directa = "DIRECTA" in tipo or "MENOR" in tipo
+        try:
+            idx = float(f.get("indice_riesgo_licit", 5)) * 10
+        except (ValueError, TypeError):
+            idx = 50.0
+        r_fin = round(min(100, idx), 1)
+        r_con = 80.0 if es_directa else 35.0
+        rows.append({
+            "Organismo": org_corto,
+            "Area": "Tesorería General de la Nación",
+            "Riesgo Financiero": r_fin,
+            "Riesgo Contratación": r_con,
+            "Riesgo Operativo": 42.0,
+            "Riesgo Datos": 30.0,
+            "IRI (Score)": _iri(r_fin, r_con, 42.0, 30.0),
+            "Fuente": "gob_bo_comprar_tgn/flujo",
+        })
 
+    # ── Organismos desde bora_licitaciones (mayor volumen) ───────────────────
+    bora_licit = data.get("bora_licitaciones", [])
+    if bora_licit:
+        df_bora = pd.DataFrame(bora_licit)
+        col_org  = _col_find(df_bora, ["organismo", "organismo_contratante"])
+        col_tipo = _col_find(df_bora, ["tipo_proceso", "tipo"])
         if col_org:
-            for org, grp in list(df_src.groupby(col_org))[:20]:
+            for org, grp in list(df_bora.groupby(col_org))[:20]:
                 org_str = str(org).strip()
-                if not org_str or org_str in ("", "nan", "n/a"):
+                org_corto = org_str.split(" - ")[0][:80]
+                if not org_corto or org_corto in organismos_vistos or org_corto in ("", "nan"):
                     continue
+                organismos_vistos.add(org_corto)
                 total    = len(grp)
                 directos = 0
                 if col_tipo:
                     directos = grp[col_tipo].astype(str).str.upper().str.contains(
-                        "DIRECT|CONTRAT|MENOR", na=False).sum()
-                pct_directos_t = (directos / total * 100) if total > 0 else r_con_global
-                r_con = round(min(100, pct_directos_t * 1.3), 1)
+                        "DIRECT|MENOR|PRIVADA", na=False).sum()
+                pct_directos = (directos / total * 100) if total > 0 else r_con_global
+                r_con = round(min(100, pct_directos * 1.3), 1)
                 rows.append({
-                    "Organismo": org_str[:80],
+                    "Organismo": org_corto,
                     "Area": "Tesorería General de la Nación",
                     "Riesgo Financiero": r_fin_global,
                     "Riesgo Contratación": r_con,
                     "Riesgo Operativo": 42.0,
                     "Riesgo Datos": 30.0,
                     "IRI (Score)": _iri(r_fin_global, r_con, 42.0, 30.0),
-                    "Fuente": "gob_bo_comprar_tgn/real",
+                    "Fuente": "gob_bo_comprar_tgn/bora_licitaciones",
+                })
+
+    # ── Organismos desde comprar ──────────────────────────────────────────────
+    comprar = data.get("comprar", [])
+    if comprar:
+        df_comp  = pd.DataFrame(comprar)
+        col_org  = _col_find(df_comp, ["unidad_ejecutora", "organismo"])
+        col_tipo = _col_find(df_comp, ["tipo_proceso", "tipo"])
+        if col_org:
+            for org, grp in list(df_comp.groupby(col_org))[:10]:
+                org_str = str(org).strip()
+                # unidad_ejecutora tiene formato "ID - Nombre", tomar solo el nombre
+                org_corto = org_str.split(" - ", 1)[-1][:80] if " - " in org_str else org_str[:80]
+                if not org_corto or org_corto in organismos_vistos or org_corto in ("", "nan", "1", "2", "5", "6"):
+                    continue
+                organismos_vistos.add(org_corto)
+                total    = len(grp)
+                directos = 0
+                if col_tipo:
+                    directos = grp[col_tipo].astype(str).str.upper().str.contains(
+                        "DIRECTA|MENOR", na=False).sum()
+                pct_directos = (directos / total * 100) if total > 0 else r_con_global
+                r_con = round(min(100, pct_directos * 1.3), 1)
+                rows.append({
+                    "Organismo": org_corto,
+                    "Area": "Tesorería General de la Nación",
+                    "Riesgo Financiero": r_fin_global,
+                    "Riesgo Contratación": r_con,
+                    "Riesgo Operativo": 42.0,
+                    "Riesgo Datos": 30.0,
+                    "IRI (Score)": _iri(r_fin_global, r_con, 42.0, 30.0),
+                    "Fuente": "gob_bo_comprar_tgn/comprar",
                 })
 
     # ── Fila global si no hay desglose ────────────────────────────────────────
     if not rows and flujo:
+        totales = data.get("totales", {})
         rows.append({
             "Organismo": "Ejecutivo Nacional — TGN (agregado ejecución presupuestaria)",
             "Area": "Tesorería General de la Nación",
@@ -793,7 +858,7 @@ def build_tgn_df() -> pd.DataFrame:
             "Riesgo Operativo": 42.0,
             "Riesgo Datos": 30.0,
             "IRI (Score)": _iri(r_fin_global, r_con_global, 42.0, 30.0),
-            "Fuente": f"gob_bo_comprar_tgn/flujo ({len(flujo)} procesos)",
+            "Fuente": f"gob_bo_comprar_tgn/flujo ({totales.get('flujo', 0)} procesos)",
         })
 
     if not rows:
@@ -802,7 +867,7 @@ def build_tgn_df() -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-    log.info(f"  ✅ TGN AR: {len(df)} organismos cargados (datos reales ejecución presupuestaria)")
+    log.info(f"  ✅ TGN AR: {len(df)} organismos cargados (datos reales BORA+COMPR.AR)")
     return df
 
 
