@@ -290,6 +290,7 @@ def reset_db(x_refresh_token: str = Header(None)):
     return {"status": "ok", "acciones": resultados}
 
 
+@app.post("/refresh")
 def refresh(x_refresh_token: str = Header(None)):
     if x_refresh_token != REFRESH_TOKEN:
         raise HTTPException(status_code=401, detail="Token invalido")
