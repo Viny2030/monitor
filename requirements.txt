@@ -7,7 +7,4 @@ httpx
 python-docx
 reportlab
 psycopg2-binary
-
-# Testing
-pytest
-pytest-asyncioopenpyxl
+openpyxl
