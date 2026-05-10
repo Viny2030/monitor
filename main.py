@@ -853,12 +853,23 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
   function renderFuentes(fuentes) {
     if (!fuentes) return;
-    document.getElementById('fuentes').innerHTML = Object.entries(fuentes).map(([k,v]) => {
-      const isSint = k.includes('sintetico') || k.includes('seed') || k.includes('fallback');
-      const icon = isSint ? '⚠️' : '✅';
+    // Agrupar por label amigable — varias fuentes técnicas pueden mapear al mismo nombre
+    const agrupado = {};
+    Object.entries(fuentes).forEach(([k, v]) => {
       const label = fuenteLabel(k);
-      return `<span style="margin-right:2rem">${icon} <code style="color:#7dd3fc" title="${k}">${label}</code> &rarr; <b>${v}</b> organismos</span>`;
-    }).join('');
+      const isSint = k.includes('sintetico') || k.includes('seed') || k.includes('fallback');
+      if (!agrupado[label]) agrupado[label] = { count: 0, sint: isSint, keys: [] };
+      agrupado[label].count += v;
+      agrupado[label].sint = agrupado[label].sint && isSint; // real si al menos una fuente es real
+      agrupado[label].keys.push(k);
+    });
+    document.getElementById('fuentes').innerHTML = Object.entries(agrupado)
+      .sort((a, b) => b[1].count - a[1].count)
+      .map(([label, d]) => {
+        const icon = d.sint ? '⚠️' : '✅';
+        const tooltip = d.keys.join(' | ');
+        return `<span style="margin-right:2rem">${icon} <code style="color:#7dd3fc" title="${tooltip}">${label}</code> &rarr; <b>${d.count}</b> organismos</span>`;
+      }).join('');
   }
 
   function openModal()  { document.getElementById('modal-donacion').classList.add('active'); }
