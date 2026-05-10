@@ -697,7 +697,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       ]);
       const g = resData.global;
       document.getElementById('m-total').textContent = g.total_organismos;
-      document.getElementById('m-avg').textContent   = g.iri_promedio_global.toFixed(1);
+      const avgVal = g.iri_promedio_global.toFixed(1);
+      const avgEl  = document.getElementById('m-avg');
+      avgEl.textContent = avgVal;
+      avgEl.className   = 'value ' + (g.iri_promedio_global >= 60 ? 'red' : g.iri_promedio_global >= 30 ? 'amber' : 'green');
       document.getElementById('m-alto').textContent  = g.alto_riesgo;
       document.getElementById('m-medio').textContent = g.medio_riesgo;
       document.getElementById('m-bajo').textContent  = g.bajo_riesgo;
@@ -754,11 +757,19 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
   function fuenteLabel(fuente) {
     const f = fuente || '';
-    if (f.includes('sintetico'))           return '⚠️ Sintetico';
-    if (f.includes('senadores'))           return '✅ Senadores';
-    if (f.includes('monitor_legistativo')) return '✅ Legislativo';
-    if (f.includes('justicia'))            return '✅ Justicia';
-    if (f.includes('fallback'))            return '↩ Fallback';
+    if (f.includes('sintetico') || f.includes('seed'))     return '⚠️ Sintético';
+    if (f.includes('fallback'))                             return '↩ Fallback';
+    if (f.includes('monitor_contratos_v2/comprar'))         return '✅ COMPR.AR';
+    if (f.includes('monitor_contratos_v2/tgn'))             return '✅ TGN (contratos)';
+    if (f.includes('monitor_contratos_v2/flujo'))           return '✅ BORA+COMPR.AR+TGN';
+    if (f.includes('monitor_contratos_v2'))                 return '✅ Contratos';
+    if (f.includes('gob_bo_comprar_tgn'))                   return '✅ TGN';
+    if (f.includes('senadores') && f.includes('nomina'))    return '✅ Senado (nómina)';
+    if (f.includes('senadores') && f.includes('partido'))   return '✅ Senado (partidos)';
+    if (f.includes('senadores') || f.includes('senado'))    return '✅ Senado';
+    if (f.includes('monitor_legistativo'))                  return '✅ Legislativo';
+    if (f.includes('justicia') && f.includes('vacantes'))   return '✅ Vacantes judiciales';
+    if (f.includes('justicia'))                             return '✅ Judicial';
     return f.split('/')[0] || '-';
   }
 
@@ -843,8 +854,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   function renderFuentes(fuentes) {
     if (!fuentes) return;
     document.getElementById('fuentes').innerHTML = Object.entries(fuentes).map(([k,v]) => {
-      const icon = k.includes('sintetico') ? '⚠️' : '✅';
-      return `<span style="margin-right:2rem">${icon} <code style="color:#7dd3fc">${k}</code> &rarr; <b>${v}</b> organismos</span>`;
+      const isSint = k.includes('sintetico') || k.includes('seed') || k.includes('fallback');
+      const icon = isSint ? '⚠️' : '✅';
+      const label = fuenteLabel(k);
+      return `<span style="margin-right:2rem">${icon} <code style="color:#7dd3fc" title="${k}">${label}</code> &rarr; <b>${v}</b> organismos</span>`;
     }).join('');
   }
 
