@@ -31,30 +31,20 @@ from io import StringIO
 
 log = logging.getLogger(__name__)
 
-# ── URLs configurables por env var — lazy (leídas en runtime, no en import) ──
-# NO asignar a constantes de módulo: si el subprocess de Railway inyecta las
-# vars después del import, las constantes quedarían vacías para siempre.
-# Usar siempre _api_url("VAR") dentro de las funciones.
-
-def _api_url(var: str) -> str:
-    """Lee la env var en el momento de la llamada (nunca en import-time)."""
-    return os.environ.get(var, "").rstrip("/")
-
-# Aliases de conveniencia — llamar como función, no como constante
-def _legistativo_api()  -> str: return _api_url("LEGISTATIVO_API_URL")
-def _senadores_api()    -> str: return _api_url("SENADORES_API_URL")
-def _justicia_api()     -> str: return _api_url("JUSTICIA_API_URL")
-def _contratos_ar_api() -> str: return _api_url("CONTRATOS_AR_API_URL")
-def _tgn_ar_api()       -> str: return _api_url("TGN_AR_API_URL")
+# ── URLs configurables por env var ────────────────────────────────────────────
+LEGISTATIVO_API   = os.getenv("LEGISTATIVO_API_URL", "").rstrip("/")
+SENADORES_API     = os.getenv("SENADORES_API_URL",   "").rstrip("/")
+JUSTICIA_API      = os.getenv("JUSTICIA_API_URL",    "").rstrip("/")
+CONTRATOS_AR_API  = os.getenv("CONTRATOS_AR_API_URL","").rstrip("/")
+TGN_AR_API        = os.getenv("TGN_AR_API_URL",      "").rstrip("/")
 
 TIMEOUT = 12
 HEADERS = {"User-Agent": "MonitorIRI/1.0 (github.com/Viny2030/monitor)"}
 
 # GitHub raw base URLs
-_JUSTICIA_RAW   = "https://raw.githubusercontent.com/Viny2030/justicia/main"
-_LEGIS_RAW      = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo/main"
-_SENADO_RAW     = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo_senadores/main"
-_CONTRATOS_RAW  = "https://raw.githubusercontent.com/Viny2030/monitor_contratos_v2/feature/base-datos/data"
+_JUSTICIA_RAW  = "https://raw.githubusercontent.com/Viny2030/justicia/main"
+_LEGIS_RAW     = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo/main"
+_SENADO_RAW    = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo_senadores/main"
 
 # Auto-descubrimiento lazy: se ejecuta solo cuando se necesita, no al importar
 import datetime as _dt
@@ -106,41 +96,6 @@ def _get_csv(url: str) -> pd.DataFrame | None:
     return None
 
 
-def _get_xlsx(url: str) -> pd.DataFrame | None:
-    try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        r.raise_for_status()
-        from io import BytesIO
-        return pd.read_excel(BytesIO(r.content))
-    except Exception as e:
-        log.debug(f"  GET XLSX {url[-60:]}: {e}")
-    return None
-
-
-def _find_latest_contratos_reportes(days_back: int = 21) -> list[pd.DataFrame]:
-    """
-    Lee los reportes diarios de monitor_contratos_v2 desde GitHub raw.
-    Combina hasta `days_back` días disponibles en una sola lista de DataFrames.
-    Branch: feature/base-datos  →  data/YYYY-MM/reporte_YYYY-MM-DD.xlsx
-    """
-    today = _dt.date.today()
-    dfs = []
-    found = 0
-    for delta in range(days_back):
-        fecha = (today - _dt.timedelta(days=delta)).strftime("%Y-%m-%d")
-        ym = fecha[:7]
-        url = f"{_CONTRATOS_RAW}/{ym}/reporte_{fecha}.xlsx"
-        df = _get_xlsx(url)
-        if df is not None and not df.empty:
-            df["_fecha"] = fecha
-            dfs.append(df)
-            found += 1
-            if found >= 10:   # máx 10 días → suficiente diversidad de organismos
-                break
-    log.info(f"  contratos GitHub raw: {found} reportes leídos ({len(pd.concat(dfs)) if dfs else 0} filas)")
-    return dfs
-
-
 def _score_estado(iri: float) -> str:
     if iri >= 60:
         return "🔴 ALTO"
@@ -168,8 +123,8 @@ def _col_find(df: pd.DataFrame, keywords: list) -> str | None:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_justicia_juzgados() -> list | None:
-    if _justicia_api():
-        data = _get_json(f"{_justicia_api()}/operativo/data")
+    if JUSTICIA_API:
+        data = _get_json(f"{JUSTICIA_API}/operativo/data")
         if data:
             return data if isinstance(data, list) else data.get("juzgados")
     return _get_json(f"{_JUSTICIA_RAW}/juzgados_nacional.json")
@@ -204,26 +159,10 @@ def build_judicial_df() -> pd.DataFrame:
                 ira       = float(j.get("ira") or j.get("IRA") or 0)
                 mora_pct  = float(j.get("mora_pct") or j.get("pct_mora") or 0)
 
-                # Piso mínimo: si ira y mora_pct son 0, los datos no llegaron.
-                # Usamos tasa_vacancia como proxy mínimo para no mostrar riesgo=0
-                # en juzgados con datos incompletos (engañoso hacia abajo).
-                ira_efectiva  = ira  if ira  > 0 else round(tasa_vacancia * 0.5, 1)
-                mora_efectiva = mora_pct if mora_pct > 0 else round(tasa_vacancia * 0.3, 1)
-
-                r_fin = min(100, max(0, ira_efectiva * 0.8 + mora_efectiva * 0.2))
-                # r_con varía por fuero: penal tiene menos discrecionalidad
-                # en compras que civil o federal
-                fuero_lower = str(fuero).lower()
-                if "penal" in fuero_lower:
-                    r_con = 35.0
-                elif "civil" in fuero_lower:
-                    r_con = 38.0
-                elif "federal" in fuero_lower:
-                    r_con = 42.0
-                else:
-                    r_con = 40.0
-                r_ope = min(100, max(0, ira_efectiva))
-                r_dat = min(100, max(0, tasa_vacancia + mora_efectiva * 0.5))
+                r_fin = min(100, max(0, ira * 0.8 + mora_pct * 0.2))
+                r_con = 40.0
+                r_ope = min(100, max(0, ira))
+                r_dat = min(100, max(0, tasa_vacancia + mora_pct * 0.5))
 
                 rows.append({
                     "Organismo": nombre,
@@ -239,19 +178,17 @@ def build_judicial_df() -> pd.DataFrame:
                 log.debug(f"  juzgado skip: {e}")
                 continue
 
-    # Organismos institucionales: diferenciados por tipo para evitar scores idénticos
     institucionales = [
-        ("Corte Suprema de Justicia",       "Control y Justicia", 1.4, 45.0, 1.6, 1.0),
-        ("Consejo de la Magistratura",      "Control y Justicia", 1.2, 42.0, 1.7, 1.1),
-        ("Ministerio Público Fiscal",       "Control y Justicia", 1.1, 38.0, 1.4, 0.9),
-        ("Ministerio Público de la Defensa","Control y Justicia", 1.0, 36.0, 1.3, 0.8),
+        ("Corte Suprema de Justicia",          "Control y Justicia"),
+        ("Consejo de la Magistratura",          "Control y Justicia"),
+        ("Ministerio Público Fiscal",           "Control y Justicia"),
+        ("Ministerio Público de la Defensa",    "Control y Justicia"),
     ]
-    # Multiplicadores: (r_fin_mult, r_con_base, r_ope_mult, r_dat_mult)
-    for org, area, fm, r_con_base, om, dm in institucionales:
-        r_fin = max(20, min(80, tasa_vacancia * fm))
-        r_con = r_con_base
-        r_ope = max(25, min(75, tasa_vacancia * om))
-        r_dat = max(20, min(70, tasa_vacancia * dm))
+    for org, area in institucionales:
+        r_fin = max(20, min(80, tasa_vacancia * 1.2))
+        r_con = 40.0
+        r_ope = max(25, min(75, tasa_vacancia * 1.5))
+        r_dat = max(20, min(70, tasa_vacancia))
         rows.append({
             "Organismo": org, "Area": area,
             "Riesgo Financiero": round(r_fin, 1),
@@ -304,8 +241,8 @@ def _fallback_judicial() -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_legis_kpis() -> dict | None:
-    if _legistativo_api():
-        data = _get_json(f"{_legistativo_api()}/api/kpis")
+    if LEGISTATIVO_API:
+        data = _get_json(f"{LEGISTATIVO_API}/api/kpis")
         if data:
             return data
     return {
@@ -316,8 +253,8 @@ def _fetch_legis_kpis() -> dict | None:
 
 
 def _fetch_legis_bloques() -> list | None:
-    if _legistativo_api():
-        data = _get_json(f"{_legistativo_api()}/api/bloques")
+    if LEGISTATIVO_API:
+        data = _get_json(f"{LEGISTATIVO_API}/api/bloques")
         if data:
             return data.get("bloques", [])
     return None
@@ -417,8 +354,8 @@ def _fallback_legislative() -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_senado_nomina() -> list | None:
-    if _senadores_api():
-        data = _get_json(f"{_senadores_api()}/senado/senadores")
+    if SENADORES_API:
+        data = _get_json(f"{SENADORES_API}/senado/senadores")
         if data and data.get("ok"):
             senadores = data.get("senadores", [])
             if senadores:
@@ -432,8 +369,8 @@ def _fetch_senado_nomina() -> list | None:
 
 
 def _fetch_senado_partidos() -> list | None:
-    if _senadores_api():
-        data = _get_json(f"{_senadores_api()}/senado/reporte-partido")
+    if SENADORES_API:
+        data = _get_json(f"{SENADORES_API}/senado/reporte-partido")
         if data and data.get("ok"):
             partidos = data.get("partidos", [])
             if partidos:
@@ -520,24 +457,13 @@ def build_senado_df() -> pd.DataFrame:
                 part_p = participation_avg
             inasist_p = round(100 - part_p, 1)
             r_ope = round(min(100, inasist_p * 1.1), 1)
-            # Si ninguna clave de participación existe en el dict del partido,
-            # el dato viene del promedio global — lo indicamos en Fuente
-            tiene_dato_propio = any(
-                p.get(k) is not None
-                for k in ("participation_pct", "participacion_prom", "asistencia_pct")
-            )
-            fuente_partido = (
-                "senadores/reporte_partido_senado CSV"
-                if tiene_dato_propio
-                else "senadores/participation_avg_global"
-            )
             rows.append({
                 "Organismo": f"Senado — {partido} ({bancas} bancas)",
                 "Area": "Poder Legislativo",
                 "Riesgo Financiero": 35.0, "Riesgo Contratación": 35.0,
                 "Riesgo Operativo": r_ope, "Riesgo Datos": 40.0,
                 "IRI (Score)": _iri(35.0, 35.0, r_ope, 40.0),
-                "Fuente": fuente_partido,
+                "Fuente": "senadores/reporte_partido_senado CSV",
             })
 
     if not rows:
@@ -584,92 +510,120 @@ def build_contratos_ar_df() -> pd.DataFrame:
     Construye registros IRI para organismos del Ejecutivo argentino
     a partir de datos reales de monitor_contratos_v2.
 
-    Fuente primaria: GitHub raw xlsx (feature/base-datos)
-      data/YYYY-MM/reporte_YYYY-MM-DD.xlsx  ← columnas reales:
-        organismo_contratante, tipo_proceso_bora,
-        indice_riesgo_licit, nivel_riesgo_licit,
-        score_riesgo_licit, en_comprar, cobro_en_tgn
-
     Dimensiones IRI:
-      R_Financiero   ← indice_riesgo_licit promedio (escala 0–11 → *9 → 0–99)
-      R_Contratacion ← % Contratación Directa sobre total del organismo
-      R_Operativo    ← 40 (placeholder — sin datos operativos del ejecutivo)
-      R_Datos        ← 25 (BORA + COMPR.AR = datos accesibles)
+      R_Financiero   ← indice_fenomeno_corruptivo promedio del flujo BORA→TGN
+      R_Contratacion ← % contrataciones directas vs licitaciones (COMPR.AR)
+      R_Operativo    ← placeholder 40 (sin datos operativos del ejecutivo)
+      R_Datos        ← 25 (BORA + COMPR.AR = datos relativamente accesibles)
     """
-    log.info("Cargando contratos Argentina (monitor_contratos_v2 — GitHub raw)...")
+    log.info("Cargando contratos Argentina (monitor_contratos_v2)...")
 
-    dfs = _find_latest_contratos_reportes(days_back=21)
-
-    if not dfs:
-        log.warning("  contratos AR: no se encontraron reportes en GitHub — usando fallback sintético")
+    if not CONTRATOS_AR_API:
+        log.warning("  CONTRATOS_AR_API_URL no definida — usando fallback sintético")
         return build_ejecutivo_df()
 
-    df_all = pd.concat(dfs, ignore_index=True)
+    data = _get_json(f"{CONTRATOS_AR_API}/api/licitaciones/datos")
 
-    # ── Normalizar nombre de organismo (quitar sufijos largos tipo "Solicitudes de Provisión") ──
-    df_all["_org"] = (
-        df_all["organismo_contratante"]
-        .astype(str)
-        .str.strip()
-        .str.split(r"\s{2,}").str[0]   # quitar doble espacio en adelante
-        .str[:90]
-    )
+    if not data or data.get("sin_datos"):
+        log.warning("  contratos AR: sin datos disponibles — usando fallback")
+        return build_ejecutivo_df()
 
-    # ── Calcular métricas por organismo ──────────────────────────────────────
     rows = []
-    organismos_vistos = set()
 
-    for org, grp in df_all.groupby("_org"):
-        org_str = str(org).strip()
-        if not org_str or org_str in ("", "nan", "N/A") or org_str in organismos_vistos:
-            continue
-        organismos_vistos.add(org_str)
+    # ── Métricas globales del flujo ───────────────────────────────────────────
+    flujo = data.get("flujo", [])
+    r_fin_global = 50.0
+    r_con_global = 50.0
 
-        total = len(grp)
+    if flujo:
+        indices    = []
+        alto_count = 0
+        for f in flujo:
+            try:
+                idx = float(f.get("indice_fenomeno_corruptivo", 0))
+                indices.append(idx)
+            except (ValueError, TypeError):
+                pass
+            if str(f.get("nivel_riesgo_teorico", "")).lower() == "alto":
+                alto_count += 1
+        if indices:
+            r_fin_global = round(min(100, sum(indices) / len(indices)), 1)
+        if flujo:
+            r_con_global = round(min(100, alto_count / len(flujo) * 100), 1)
 
-        # R_Financiero: indice_riesgo_licit promedio (escala original 0–11, normalizar ×9)
-        try:
-            idx_vals = pd.to_numeric(grp["indice_riesgo_licit"], errors="coerce").dropna()
-            r_fin = round(min(100, float(idx_vals.mean()) * 9), 1) if len(idx_vals) > 0 else 40.0
-        except Exception:
-            r_fin = 40.0
+    # ── Organismos desde COMPR.AR ─────────────────────────────────────────────
+    comprar = data.get("comprar", [])
+    if comprar:
+        df_comp  = pd.DataFrame(comprar)
+        col_org  = _col_find(df_comp, ["organismo", "unidad", "jurisdiccion", "entidad"])
+        col_tipo = _col_find(df_comp, ["tipo", "proceso", "modalidad"])
 
-        # R_Contratacion: % procesos directos
-        try:
-            directos = grp["tipo_proceso_bora"].astype(str).str.upper().str.contains(
-                "DIRECTA|CONTRATACI.N DIRECTA|MENOR CUANT", na=False, regex=True
-            ).sum()
-            pct_directos = (directos / total * 100) if total > 0 else 30.0
-            r_con = round(min(100, pct_directos * 1.4), 1)
-        except Exception:
-            r_con = 30.0
+        if col_org:
+            for org, grp in list(df_comp.groupby(col_org))[:25]:
+                org_str = str(org).strip()
+                if not org_str or org_str in ("", "nan", "n/a", "N/A"):
+                    continue
+                total    = len(grp)
+                directos = 0
+                if col_tipo:
+                    directos = grp[col_tipo].astype(str).str.upper().str.contains(
+                        "DIRECT|CONTRAT", na=False).sum()
+                r_con = round(min(100, (directos / total * 100 * 1.5)
+                                  if total > 0 else r_con_global), 1)
+                rows.append({
+                    "Organismo": org_str[:80],
+                    "Area": "Administración Central",
+                    "Riesgo Financiero": r_fin_global,
+                    "Riesgo Contratación": r_con,
+                    "Riesgo Operativo": 40.0,
+                    "Riesgo Datos": 25.0,
+                    "IRI (Score)": _iri(r_fin_global, r_con, 40.0, 25.0),
+                    "Fuente": "monitor_contratos_v2/comprar",
+                })
 
-        # Fuente: indicar cuántos días de datos y si cruzó con COMPR.AR/TGN
-        en_comprar = grp.get("en_comprar", pd.Series(dtype=str)).astype(str).str.contains("✅|SI|SÍ", na=False).sum()
-        en_tgn     = grp.get("cobro_en_tgn", pd.Series(dtype=str)).astype(str).str.contains("✅|SI|SÍ", na=False).sum()
-        fuente_str = f"monitor_contratos_v2/reporte ({total} registros"
-        if en_comprar: fuente_str += f", {en_comprar} en COMPR.AR"
-        if en_tgn:     fuente_str += f", {en_tgn} en TGN"
-        fuente_str += ")"
+    # ── Fallback a TGN si COMPR.AR no tiene organismos ───────────────────────
+    if not rows:
+        tgn = data.get("tgn", [])
+        if tgn:
+            df_tgn  = pd.DataFrame(tgn)
+            col_jur = _col_find(df_tgn, ["jurisdiccion", "entidad", "organismo", "unidad"])
+            if col_jur:
+                for jur, _ in list(df_tgn.groupby(col_jur))[:20]:
+                    jur_str = str(jur).strip()
+                    if not jur_str or jur_str in ("", "nan", "n/a"):
+                        continue
+                    rows.append({
+                        "Organismo": jur_str[:80],
+                        "Area": "Administración Central",
+                        "Riesgo Financiero": r_fin_global,
+                        "Riesgo Contratación": r_con_global,
+                        "Riesgo Operativo": 40.0,
+                        "Riesgo Datos": 25.0,
+                        "IRI (Score)": _iri(r_fin_global, r_con_global, 40.0, 25.0),
+                        "Fuente": "monitor_contratos_v2/tgn",
+                    })
 
+    # ── Fila global si no hay desglose por organismo ──────────────────────────
+    if not rows and flujo:
+        totales = data.get("totales", {})
         rows.append({
-            "Organismo": org_str,
+            "Organismo": "Ejecutivo Nacional (agregado BORA+COMPR.AR+TGN)",
             "Area": "Administración Central",
-            "Riesgo Financiero": r_fin,
-            "Riesgo Contratación": r_con,
+            "Riesgo Financiero": r_fin_global,
+            "Riesgo Contratación": r_con_global,
             "Riesgo Operativo": 40.0,
             "Riesgo Datos": 25.0,
-            "IRI (Score)": _iri(r_fin, r_con, 40.0, 25.0),
-            "Fuente": fuente_str,
+            "IRI (Score)": _iri(r_fin_global, r_con_global, 40.0, 25.0),
+            "Fuente": f"monitor_contratos_v2/flujo ({totales.get('flujo',0)} procesos)",
         })
 
     if not rows:
-        log.warning("  contratos AR: sin organismos procesables — usando fallback sintético")
+        log.warning("  contratos AR: sin organismos — usando fallback sintético")
         return build_ejecutivo_df()
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-    log.info(f"  ✅ contratos AR: {len(df)} organismos (datos reales BORA — GitHub raw)")
+    log.info(f"  ✅ contratos AR: {len(df)} organismos (datos reales BORA+COMPR.AR+TGN)")
     return df
 
 
@@ -730,20 +684,18 @@ def build_tgn_df() -> pd.DataFrame:
     a partir de datos reales de gob_bo_comprar_tgn (Tesorería General de la Nación).
 
     Dimensiones IRI:
-      R_Financiero   ← indice_riesgo_licit promedio del flujo (campo real del API)
-      R_Contratacion ← % procesos directos vs licitaciones (flujo + comprar)
+      R_Financiero   ← indice_fenomeno_corruptivo promedio (flujo TGN→COMPR.AR)
+      R_Contratacion ← % procesos directos vs licitaciones
       R_Operativo    ← placeholder 42
       R_Datos        ← 30 (TGN publica datos de ejecución presupuestaria)
     """
     log.info("Cargando datos TGN Argentina (gob_bo_comprar_tgn — Tesorería General de la Nación)...")
-    _tgn_url = _tgn_ar_api()
-    log.info(f"  TGN_AR_API_URL={_tgn_url!r}")
 
-    if not _tgn_url:
+    if not TGN_AR_API:
         log.warning("  TGN_AR_API_URL no definida — usando fallback sintético")
         return _fallback_tgn()
 
-    data = _get_json(f"{_tgn_url}/api/licitaciones/datos")
+    data = _get_json(f"{TGN_AR_API}/api/licitaciones/datos")
 
     if not data or data.get("sin_datos"):
         log.warning("  TGN AR: sin datos — usando fallback")
@@ -752,123 +704,58 @@ def build_tgn_df() -> pd.DataFrame:
     rows = []
 
     # ── Métricas globales del flujo ───────────────────────────────────────────
-    # Campos reales: indice_riesgo_licit (float como string), nivel_riesgo_licit
     flujo = data.get("flujo", [])
     r_fin_global = 50.0
     r_con_global = 45.0
 
     if flujo:
-        indices    = []
+        indices = []
         alto_count = 0
         for f in flujo:
             try:
-                idx = float(f.get("indice_riesgo_licit", 0))
-                indices.append(idx * 10)  # escala 0-11 → normalizar a 0-100
+                idx = float(f.get("indice_fenomeno_corruptivo", 0))
+                indices.append(idx)
             except (ValueError, TypeError):
                 pass
-            if str(f.get("nivel_riesgo_licit", "")).lower() in ("alto", "medio-alto"):
+            if str(f.get("nivel_riesgo_teorico", "")).lower() == "alto":
                 alto_count += 1
         if indices:
             r_fin_global = round(min(100, sum(indices) / len(indices)), 1)
         if flujo:
             r_con_global = round(min(100, alto_count / len(flujo) * 100), 1)
 
-    # ── Organismos desde flujo (organismo_contratante) ───────────────────────
-    organismos_vistos = set()
-    for f in flujo:
-        org_str = str(f.get("organismo_contratante", "")).strip()
-        if not org_str or org_str in ("", "nan"):
-            continue
-        # Normalizar nombre largo
-        org_corto = org_str.split(" - ")[0][:80]
-        if org_corto in organismos_vistos:
-            continue
-        organismos_vistos.add(org_corto)
-        tipo = str(f.get("tipo_proceso_bora", "")).upper()
-        es_directa = "DIRECTA" in tipo or "MENOR" in tipo
-        try:
-            idx = float(f.get("indice_riesgo_licit", 5)) * 10
-        except (ValueError, TypeError):
-            idx = 50.0
-        r_fin = round(min(100, idx), 1)
-        r_con = 80.0 if es_directa else 35.0
-        rows.append({
-            "Organismo": org_corto,
-            "Area": "Tesorería General de la Nación",
-            "Riesgo Financiero": r_fin,
-            "Riesgo Contratación": r_con,
-            "Riesgo Operativo": 42.0,
-            "Riesgo Datos": 30.0,
-            "IRI (Score)": _iri(r_fin, r_con, 42.0, 30.0),
-            "Fuente": "gob_bo_comprar_tgn/flujo",
-        })
+    # ── Organismos desde datos COMPR.AR / TGN ejecución ──────────────────────
+    source_data = data.get("comprar", []) or data.get("tgn", [])
+    if source_data:
+        df_src  = pd.DataFrame(source_data)
+        col_org = _col_find(df_src, ["organismo", "jurisdiccion", "entidad", "unidad", "ministerio"])
+        col_tipo = _col_find(df_src, ["tipo", "modalidad", "proceso"])
 
-    # ── Organismos desde bora_licitaciones (mayor volumen) ───────────────────
-    bora_licit = data.get("bora_licitaciones", [])
-    if bora_licit:
-        df_bora = pd.DataFrame(bora_licit)
-        col_org  = _col_find(df_bora, ["organismo", "organismo_contratante"])
-        col_tipo = _col_find(df_bora, ["tipo_proceso", "tipo"])
         if col_org:
-            for org, grp in list(df_bora.groupby(col_org))[:20]:
+            for org, grp in list(df_src.groupby(col_org))[:20]:
                 org_str = str(org).strip()
-                org_corto = org_str.split(" - ")[0][:80]
-                if not org_corto or org_corto in organismos_vistos or org_corto in ("", "nan"):
+                if not org_str or org_str in ("", "nan", "n/a"):
                     continue
-                organismos_vistos.add(org_corto)
                 total    = len(grp)
                 directos = 0
                 if col_tipo:
                     directos = grp[col_tipo].astype(str).str.upper().str.contains(
-                        "DIRECT|MENOR|PRIVADA", na=False).sum()
-                pct_directos = (directos / total * 100) if total > 0 else r_con_global
-                r_con = round(min(100, pct_directos * 1.3), 1)
+                        "DIRECT|CONTRAT|MENOR", na=False).sum()
+                r_con = round(min(100, (directos / total * 100 * 1.3)
+                                  if total > 0 else r_con_global), 1)
                 rows.append({
-                    "Organismo": org_corto,
+                    "Organismo": org_str[:80],
                     "Area": "Tesorería General de la Nación",
                     "Riesgo Financiero": r_fin_global,
                     "Riesgo Contratación": r_con,
                     "Riesgo Operativo": 42.0,
                     "Riesgo Datos": 30.0,
                     "IRI (Score)": _iri(r_fin_global, r_con, 42.0, 30.0),
-                    "Fuente": "gob_bo_comprar_tgn/bora_licitaciones",
-                })
-
-    # ── Organismos desde comprar ──────────────────────────────────────────────
-    comprar = data.get("comprar", [])
-    if comprar:
-        df_comp  = pd.DataFrame(comprar)
-        col_org  = _col_find(df_comp, ["unidad_ejecutora", "organismo"])
-        col_tipo = _col_find(df_comp, ["tipo_proceso", "tipo"])
-        if col_org:
-            for org, grp in list(df_comp.groupby(col_org))[:10]:
-                org_str = str(org).strip()
-                # unidad_ejecutora tiene formato "ID - Nombre", tomar solo el nombre
-                org_corto = org_str.split(" - ", 1)[-1][:80] if " - " in org_str else org_str[:80]
-                if not org_corto or org_corto in organismos_vistos or org_corto in ("", "nan", "1", "2", "5", "6"):
-                    continue
-                organismos_vistos.add(org_corto)
-                total    = len(grp)
-                directos = 0
-                if col_tipo:
-                    directos = grp[col_tipo].astype(str).str.upper().str.contains(
-                        "DIRECTA|MENOR", na=False).sum()
-                pct_directos = (directos / total * 100) if total > 0 else r_con_global
-                r_con = round(min(100, pct_directos * 1.3), 1)
-                rows.append({
-                    "Organismo": org_corto,
-                    "Area": "Tesorería General de la Nación",
-                    "Riesgo Financiero": r_fin_global,
-                    "Riesgo Contratación": r_con,
-                    "Riesgo Operativo": 42.0,
-                    "Riesgo Datos": 30.0,
-                    "IRI (Score)": _iri(r_fin_global, r_con, 42.0, 30.0),
-                    "Fuente": "gob_bo_comprar_tgn/comprar",
+                    "Fuente": "gob_bo_comprar_tgn/real",
                 })
 
     # ── Fila global si no hay desglose ────────────────────────────────────────
     if not rows and flujo:
-        totales = data.get("totales", {})
         rows.append({
             "Organismo": "Ejecutivo Nacional — TGN (agregado ejecución presupuestaria)",
             "Area": "Tesorería General de la Nación",
@@ -877,7 +764,7 @@ def build_tgn_df() -> pd.DataFrame:
             "Riesgo Operativo": 42.0,
             "Riesgo Datos": 30.0,
             "IRI (Score)": _iri(r_fin_global, r_con_global, 42.0, 30.0),
-            "Fuente": f"gob_bo_comprar_tgn/flujo ({totales.get('flujo', 0)} procesos)",
+            "Fuente": f"gob_bo_comprar_tgn/flujo ({len(flujo)} procesos)",
         })
 
     if not rows:
@@ -886,7 +773,7 @@ def build_tgn_df() -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-    log.info(f"  ✅ TGN AR: {len(df)} organismos cargados (datos reales BORA+COMPR.AR)")
+    log.info(f"  ✅ TGN AR: {len(df)} organismos cargados (datos reales ejecución presupuestaria)")
     return df
 
 
