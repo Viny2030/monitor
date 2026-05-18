@@ -51,7 +51,7 @@ TIMEOUT = 12
 HEADERS = {"User-Agent": "MonitorIRI/1.0 (github.com/Viny2030/monitor)"}
 
 # GitHub raw base URLs
-_JUSTICIA_RAW   = "https://raw.githubusercontent.com/Viny2030/justicia/main"
+_JUSTICIA_RAW   = "https://raw.githubusercontent.com/Viny2030/justicia/main/data"
 _LEGIS_RAW      = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo/main"
 _SENADO_RAW     = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo_senadores/main"
 _CONTRATOS_RAW  = "https://raw.githubusercontent.com/Viny2030/monitor_contratos_v2/feature/base-datos/data"
