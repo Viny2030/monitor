@@ -13,7 +13,7 @@ jobs:
       - name: Llamar POST /refresh
         run: |
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-            -H "X-Refresh-Token: ${{ secrets.TOKEN }}" \
+            -H "X-Refresh-Token: ${{ secrets.REFRESH_TOKEN }}" \
             https://monitor-production-f053.up.railway.app/refresh)
           echo "HTTP Status: $RESPONSE"
           if [ "$RESPONSE" != "200" ]; then
