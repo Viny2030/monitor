@@ -931,6 +931,9 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </body>
 </html>"""
 
+@app.get("/debug-token")
+def debug_token():
+    return {"token_activo": REFRESH_TOKEN}
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard():
