@@ -305,14 +305,47 @@ def _fallback_judicial() -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_legis_kpis() -> dict | None:
+    """
+    Llama a /api/kpis del servidor legistativo.
+    El endpoint devuelve: total_diputados, nape, tpmp, cols, iap, iqp_global, rls, paridad, meta.
+    Normaliza los campos al esquema interno del connector.
+    """
     if LEGISTATIVO_API:
         data = _get_json(f"{LEGISTATIVO_API}/api/kpis")
-        if data:
-            return data
+        if data and data.get("total_diputados"):
+            # nape del endpoint = ratio inasistencia (0-1), ej: 0.0009 = 0.09% inasistencia
+            # Para IRI necesitamos invertirlo: alta asistencia = bajo riesgo operativo
+            nape_raw = float(data.get("nape", 0.0))
+            # Si nape es casi 0 (asistencia ~100%), nape_score para IRI debe ser bajo (~5)
+            # Escalar: nape 0.0 → score 5 | nape 0.5 → score 50 | nape 1.0 → score 100
+            nape_score = max(5.0, round(nape_raw * 100, 1))
+
+            cols_raw = float(data.get("cols", 72.7))
+            # cols = % diputados con al menos 1 ley aprobada (0-100)
+            # Para IRI: bajo cols = alto riesgo → invertir
+            cols_riesgo = round(100 - cols_raw, 1)
+
+            iap_raw = float(data.get("iap") or 0.95)
+            iap_score = round((1 - iap_raw) * 100, 1)
+
+            iqp = float(data.get("iqp_global") or 0.5)
+            # IQP: ratio participación efectiva (0-1). Bajo IQP = alto riesgo datos
+            iqp_riesgo = round((1 - iqp) * 60 + 15, 1)
+
+            return {
+                "nape":            nape_score,    # ya en escala 0-100 para IRI
+                "cols":            cols_riesgo,   # riesgo por baja legislación activa
+                "iap":             iap_score,     # riesgo presupuestario
+                "iqp_global":      iqp_riesgo,    # riesgo datos
+                "total_diputados": int(data.get("total_diputados", 257)),
+                "fuente":          "monitor_legistativo/api/kpis (datos reales HCDN)",
+                "_raw":            data,          # datos originales para debug
+            }
+    # Fallback con valores históricos razonables
     return {
-        "nape": 0.27, "cols": 72.7, "iap": 0.95, "crc": 4818,
+        "nape": 27.0, "cols": 27.3, "iap": 5.0, "iqp_global": 40.0,
         "total_diputados": 257,
-        "fuente": "monitor_legistativo README v1.0 marzo 2026",
+        "fuente": "monitor_legistativo fallback histórico",
     }
 
 def _fetch_legis_bloques() -> list | None:
@@ -324,18 +357,23 @@ def _fetch_legis_bloques() -> list | None:
 
 def build_legislative_df() -> pd.DataFrame:
     log.info("Cargando datos legislativos (monitor_legistativo — Diputados)...")
-    kpis   = _fetch_legis_kpis()
+    kpis    = _fetch_legis_kpis()
     bloques = _fetch_legis_bloques()
-    rows = []
+    rows    = []
 
-    nape_raw  = float(kpis.get("nape", 0.73)) if kpis else 0.73
-    nape_score = nape_raw * 100 if nape_raw <= 1.0 else nape_raw
-    cols      = float(kpis.get("cols", 72.7)) if kpis else 72.7
-    iap       = float(kpis.get("iap",  0.95)) if kpis else 0.95
-    iap_score = (1 - iap) * 100
-    crc       = float(kpis.get("crc", 4818))  if kpis else 4818
-    crc_score = min(100, crc / 100)
-    iad_riesgo = 40.0
+    # Campos ya normalizados a escala IRI (0-100) por _fetch_legis_kpis()
+    nape_score = float(kpis.get("nape",       27.0)) if kpis else 27.0
+    cols_riesgo = float(kpis.get("cols",      27.3)) if kpis else 27.3
+    iap_score   = float(kpis.get("iap",        5.0)) if kpis else 5.0
+    iqp_riesgo  = float(kpis.get("iqp_global",40.0)) if kpis else 40.0
+    fuente_kpis = kpis.get("fuente", "monitor_legistativo") if kpis else "monitor_legistativo"
+
+    log.info(f"  KPIs legistativo: nape_score={nape_score} cols_riesgo={cols_riesgo} "
+             f"iap_score={iap_score} iqp_riesgo={iqp_riesgo}")
+
+    # Variables de compatibilidad para el bloque de institucionales
+    crc_score  = 35.0   # contratación legislativa — placeholder
+    iad_riesgo = iqp_riesgo
 
     institucional_leg = [
         ("Cámara de Diputados",                    "Poder Legislativo"),
@@ -346,27 +384,45 @@ def build_legislative_df() -> pd.DataFrame:
     for org, area in institucional_leg:
         r_fin = round(min(100, iap_score + crc_score * 0.2), 1)
         r_con = 35.0
-        r_ope = round(min(100, nape_score * 0.7 + (100 - cols) * 0.3), 1)
+        r_ope = round(min(100, nape_score * 0.7 + cols_riesgo * 0.3), 1)
         r_dat = round(iad_riesgo, 1)
         rows.append({
             "Organismo": org, "Area": area,
             "Riesgo Financiero": r_fin, "Riesgo Contratación": r_con,
             "Riesgo Operativo":  r_ope, "Riesgo Datos":        r_dat,
             "IRI (Score)": _iri(r_fin, r_con, r_ope, r_dat),
-            "Fuente": kpis.get("fuente", "monitor_legistativo") if kpis else "monitor_legistativo",
+            "Fuente": fuente_kpis,
         })
 
     if bloques:
         for b in bloques[:10]:
             nombre    = b.get("bloque", "Bloque")
-            asist     = b.get("asistencia_pct") or (100 - nape_score)
-            iqp       = b.get("iqp_promedio") or 0.5
-            tasa_apro = b.get("tasa_aprobacion") or cols
-            nape_b    = 100 - float(asist)
+            asist_pct = b.get("asistencia_pct")
+            iqp_b     = b.get("iqp_promedio")
+            tasa_apro = b.get("tasa_aprobacion")
+
+            # nape_b: riesgo operativo por inasistencia del bloque
+            if asist_pct is not None:
+                nape_b = round(max(0, 100 - float(asist_pct)), 1)
+            else:
+                nape_b = nape_score
+
+            # riesgo por baja tasa de aprobación
+            if tasa_apro is not None:
+                col_b = round(max(0, 100 - float(tasa_apro)), 1)
+            else:
+                col_b = cols_riesgo
+
+            # riesgo datos por IQP del bloque
+            if iqp_b is not None:
+                dat_b = round(min(100, (1 - float(iqp_b)) * 60 + 15), 1)
+            else:
+                dat_b = iqp_riesgo
+
             r_fin = round(min(100, iap_score + 5), 1)
             r_con = 35.0
-            r_ope = round(min(100, nape_b * 0.6 + (100 - tasa_apro) * 0.4), 1)
-            r_dat = round(min(100, (1 - float(iqp)) * 60 + 15), 1)
+            r_ope = round(min(100, nape_b * 0.6 + col_b * 0.4), 1)
+            r_dat = round(dat_b, 1)
             rows.append({
                 "Organismo": f"Bloque {nombre}",
                 "Area": "Poder Legislativo",
