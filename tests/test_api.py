@@ -2,7 +2,8 @@
 test_api.py — Tests de integración para los endpoints FastAPI de main.py
 
 Cubre todos los endpoints:
-  GET  /             health check
+  GET  /             redirige a /dashboard
+  GET  /info         health check con metadata
   GET  /datos        dataset completo (con filtros opcionales)
   GET  /por-area/    organismos por área
   GET  /top-riesgo   top N por score IRI
@@ -52,42 +53,59 @@ def client_sin_csv(tmp_path, monkeypatch):
 
 
 # ═══════════════════════════════════════════════════════
-# GET / — Health check
+# GET / — Redirige a /dashboard
 # ═══════════════════════════════════════════════════════
 
-class TestHealthCheck:
+class TestRaiz:
+
+    def test_redirige_a_dashboard_sin_seguir_redirect(self, client):
+        r = client.get("/", follow_redirects=False)
+        assert r.status_code == 302
+        assert r.headers["location"] == "/dashboard"
+
+    def test_status_200_siguiendo_redirect(self, client):
+        r = client.get("/")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+
+
+# ═══════════════════════════════════════════════════════
+# GET /info — Health check con metadata
+# ═══════════════════════════════════════════════════════
+
+class TestInfo:
 
     def test_status_200(self, client):
-        r = client.get("/")
+        r = client.get("/info")
         assert r.status_code == 200
 
     def test_status_ok(self, client):
-        data = r = client.get("/")
+        r = client.get("/info")
         assert r.json()["status"] == "ok"
 
     def test_campo_version(self, client):
-        r = client.get("/")
+        r = client.get("/info")
         assert "version" in r.json()
 
     def test_campo_endpoints(self, client):
-        r = client.get("/")
+        r = client.get("/info")
         assert "endpoints" in r.json()
 
     def test_dataset_disponible_true(self, client):
-        r = client.get("/")
+        r = client.get("/info")
         assert r.json()["dataset_disponible"] is True
 
     def test_dataset_disponible_false_sin_csv(self, client_sin_csv):
-        r = client_sin_csv.get("/")
+        r = client_sin_csv.get("/info")
         assert r.json()["dataset_disponible"] is False
 
     def test_total_organismos_correcto(self, client):
-        r = client.get("/")
+        r = client.get("/info")
         # El CSV de prueba tiene 3 organismos
         assert r.json()["total_organismos"] == 3
 
     def test_repos_conectados_presentes(self, client):
-        r = client.get("/")
+        r = client.get("/info")
         repos = r.json().get("repos_conectados", [])
         assert len(repos) > 0
 
