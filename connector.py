@@ -26,7 +26,6 @@ import os
 import logging
 import requests
 import pandas as pd
-import numpy as np
 from io import StringIO
 
 log = logging.getLogger(__name__)
@@ -265,32 +264,6 @@ def build_judicial_df() -> pd.DataFrame:
     return df
 
 
-def _fallback_judicial() -> pd.DataFrame:
-    np.random.seed(42)
-    orgs = [
-        ("Corte Suprema de Justicia",             "Control y Justicia"),
-        ("Consejo de la Magistratura",             "Control y Justicia"),
-        ("Poder Judicial de la Nación",            "Control y Justicia"),
-        ("Ministerio Público Fiscal",              "Control y Justicia"),
-        ("Ministerio Público de la Defensa",       "Control y Justicia"),
-        ("Juzgado Federal Civil N°1",              "Poder Judicial — Civil"),
-        ("Juzgado Federal Penal N°1",              "Poder Judicial — Penal"),
-        ("Cámara Federal de Apelaciones",          "Poder Judicial — Federal"),
-    ]
-    rows = []
-    for org, area in orgs:
-        r_fin, r_con, r_ope, r_dat = np.random.randint(20, 75, 4)
-        rows.append({
-            "Organismo": org, "Area": area,
-            "Riesgo Financiero": float(r_fin), "Riesgo Contratación": float(r_con),
-            "Riesgo Operativo":  float(r_ope), "Riesgo Datos":        float(r_dat),
-            "IRI (Score)": _iri(r_fin, r_con, r_ope, r_dat),
-            "Estado": "", "Fuente": "fallback_seed42",
-        })
-    df = pd.DataFrame(rows)
-    df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-    return df
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 2. DATOS LEGISLATIVOS — repo: monitor_legistativo (Diputados)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -414,27 +387,6 @@ def build_legislative_df() -> pd.DataFrame:
     log.info(f"  ✅ legislativo (diputados): {len(df)} organismos cargados")
     return df
 
-def _fallback_legislative() -> pd.DataFrame:
-    np.random.seed(43)
-    orgs = [
-        ("Cámara de Diputados",  "Poder Legislativo"),
-        ("Jefatura de Gabinete", "Administración Central"),
-        ("AGN",                  "Control y Justicia"),
-    ]
-    rows = []
-    for org, area in orgs:
-        r_fin, r_con, r_ope, r_dat = np.random.randint(15, 65, 4)
-        rows.append({
-            "Organismo": org, "Area": area,
-            "Riesgo Financiero": float(r_fin), "Riesgo Contratación": float(r_con),
-            "Riesgo Operativo":  float(r_ope), "Riesgo Datos":        float(r_dat),
-            "IRI (Score)": _iri(r_fin, r_con, r_ope, r_dat),
-            "Estado": "", "Fuente": "fallback_seed43",
-        })
-    df = pd.DataFrame(rows)
-    df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-    return df
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 3. DATOS SENADORES — repo: monitor_legistativo_senadores
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -555,28 +507,6 @@ def build_senado_df() -> pd.DataFrame:
     log.info(f"  ✅ senado: {len(df)} organismos (participation_avg={participation_avg}%)")
     return df
 
-def _fallback_senado() -> pd.DataFrame:
-    np.random.seed(45)
-    orgs = [
-        ("Cámara de Senadores",                          "Poder Legislativo"),
-        ("Senado — Unión por la Patria (33 bancas)",     "Poder Legislativo"),
-        ("Senado — La Libertad Avanza (7 bancas)",       "Poder Legislativo"),
-        ("Senado — PRO (6 bancas)",                      "Poder Legislativo"),
-    ]
-    rows = []
-    for org, area in orgs:
-        r_fin, r_con, r_ope, r_dat = np.random.randint(15, 60, 4)
-        rows.append({
-            "Organismo": org, "Area": area,
-            "Riesgo Financiero": float(r_fin), "Riesgo Contratación": float(r_con),
-            "Riesgo Operativo":  float(r_ope), "Riesgo Datos":        float(r_dat),
-            "IRI (Score)": _iri(r_fin, r_con, r_ope, r_dat),
-            "Estado": "", "Fuente": "fallback_seed45",
-        })
-    df = pd.DataFrame(rows)
-    df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-    return df
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 4. CONTRATOS ARGENTINA — repo: monitor_contratos_v2
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -679,44 +609,6 @@ def build_contratos_ar_df() -> pd.DataFrame:
     log.info(f"  ✅ contratos AR: {len(df)} organismos (datos reales BORA+COMPR.AR+TGN)")
     return df
 
-def build_ejecutivo_df() -> pd.DataFrame:
-    log.info("  ⚠️ ejecutivo AR: usando datos sintéticos seed 44")
-    np.random.seed(44)
-    orgs = {
-        "Administración Central": [
-            "Ministerio de Economía", "Ministerio de Salud", "Ministerio de Seguridad",
-            "Ministerio de Justicia", "Ministerio de Capital Humano",
-            "Ministerio de Relaciones Exteriores", "Secretaría de Energía",
-            "Secretaría de Comercio", "Secretaría de Minería",
-        ],
-        "Infraestructura": [
-            "Vialidad Nacional", "AySA", "Trenes Argentinos",
-            "Administración General de Puertos", "Corredores Viales S.A.", "ENOHSA",
-        ],
-        "Educación y Ciencia": [
-            "CONICET", "CNEA", "INTA", "INTI", "CONAE", "ANMAT",
-            "UBA", "UNC", "UNLP", "UNR",
-        ],
-        "Empresas y Otros": [
-            "Aerolíneas Argentinas", "YPF", "Correo Argentino", "Banco Nación",
-            "AFIP", "ANSES", "PAMI", "INCAA", "Enacom",
-        ],
-    }
-    rows = []
-    for area, lista in orgs.items():
-        for org in lista:
-            r_fin, r_con, r_ope, r_dat = np.random.randint(5, 90, 4)
-            rows.append({
-                "Organismo": org, "Area": area,
-                "Riesgo Financiero": float(r_fin), "Riesgo Contratación": float(r_con),
-                "Riesgo Operativo":  float(r_ope), "Riesgo Datos":        float(r_dat),
-                "IRI (Score)": _iri(r_fin, r_con, r_ope, r_dat),
-                "Estado": "", "Fuente": "sintetico_seed44_pendiente_comprar",
-            })
-    df = pd.DataFrame(rows)
-    df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-    return df
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # 5. TESORERÍA GENERAL DE LA NACIÓN — repo: gob_bo_comprar_tgn
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -798,29 +690,6 @@ def build_tgn_df() -> pd.DataFrame:
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
     log.info(f"  ✅ TGN AR: {len(df)} organismos cargados (datos reales ejecución presupuestaria)")
-    return df
-
-def _fallback_tgn() -> pd.DataFrame:
-    np.random.seed(46)
-    orgs = [
-        "Ministerio de Economía", "Ministerio de Salud",
-        "Ministerio de Capital Humano", "Ministerio de Seguridad",
-        "Ministerio de Infraestructura", "Ministerio de Relaciones Exteriores",
-        "Secretaría de Hacienda", "Secretaría de Finanzas",
-        "Vialidad Nacional", "ANSES",
-    ]
-    rows = []
-    for org in orgs:
-        r_fin, r_con, r_ope, r_dat = np.random.randint(20, 80, 4)
-        rows.append({
-            "Organismo": org, "Area": "Tesorería General de la Nación",
-            "Riesgo Financiero": float(r_fin), "Riesgo Contratación": float(r_con),
-            "Riesgo Operativo":  float(r_ope), "Riesgo Datos":        float(r_dat),
-            "IRI (Score)": _iri(r_fin, r_con, r_ope, r_dat),
-            "Estado": "", "Fuente": "fallback_seed46_tgn_ar",
-        })
-    df = pd.DataFrame(rows)
-    df["Estado"] = df["IRI (Score)"].apply(_score_estado)
     return df
 
 # ═══════════════════════════════════════════════════════════════════════════════
