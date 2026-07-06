@@ -11,7 +11,8 @@ Conecta el motor IRI del monitor central con los repos especializados:
 Estrategia de ingesta (en orden de prioridad):
 1. Railway API → si la env var correspondiente está definida
 2. GitHub raw → JSON/CSV directos del repo (siempre disponible)
-3. Fallback → datos sintéticos reproducibles (np.random.seed fija)
+3. Si ninguna fuente real responde, esa sección se omite del dataset — no se
+   generan datos sintéticos.
 
 Variables de entorno:
   LEGISTATIVO_API_URL
@@ -30,7 +31,6 @@ from io import StringIO
 
 log = logging.getLogger(__name__)
 
-# ── URLs configurables por env var ────────────────────────────────────────────
 LEGISTATIVO_API  = os.getenv("LEGISTATIVO_API_URL", "").rstrip("/")
 SENADORES_API    = os.getenv("SENADORES_API_URL",   "").rstrip("/")
 JUSTICIA_API     = os.getenv("JUSTICIA_API_URL",    "").rstrip("/")
@@ -40,7 +40,6 @@ TGN_AR_API       = os.getenv("TGN_AR_API_URL",      "").rstrip("/")
 TIMEOUT = 12
 HEADERS = {"User-Agent": "MonitorIRI/1.0 (github.com/Viny2030/monitor)"}
 
-# GitHub raw base URLs
 _JUSTICIA_RAW = "https://raw.githubusercontent.com/Viny2030/justicia/main"
 _LEGIS_RAW    = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo/main"
 _SENADO_RAW   = "https://raw.githubusercontent.com/Viny2030/monitor_legistativo_senadores/main"
@@ -66,7 +65,6 @@ def _find_latest_senado_csv(base_url: str, prefix: str, days_back: int = 60) -> 
 _SENADO_CSV_NOMINA   = None
 _SENADO_CSV_PARTIDO  = None
 
-# ── Helpers internos ──────────────────────────────────────────────────────────
 def _get_json(url: str) -> dict | list | None:
     try:
         r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
@@ -108,15 +106,26 @@ def _col_find(df: pd.DataFrame, keywords: list) -> str | None:
                 return c
     return None
 
+_MONITOR_COLUMNS = [
+    "Organismo", "Area", "Riesgo Financiero", "Riesgo Contratación",
+    "Riesgo Operativo", "Riesgo Datos", "IRI (Score)", "Estado", "Fuente",
+]
+
+def _empty_monitor_df() -> pd.DataFrame:
+    """
+    DataFrame vacío con el esquema del monitor.
+
+    Se usa cuando una fuente real no responde: en vez de rellenar el hueco
+    con datos sintéticos (np.random con seed fija), esos organismos
+    simplemente no aparecen en el dataset. Menos datos, pero todos reales.
+    """
+    return pd.DataFrame(columns=_MONITOR_COLUMNS)
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # 1. DATOS JUDICIALES — repo: justicia
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_justicia_magistrados() -> list | None:
-    """
-    Lee magistrados.json del repo justicia (lista de magistrados con camara/organo_nombre).
-    Preferencia: Railway API → GitHub raw.
-    """
     if JUSTICIA_API:
         data = _get_json(f"{JUSTICIA_API}/operativo/data")
         if data:
@@ -125,10 +134,6 @@ def _fetch_justicia_magistrados() -> list | None:
 
 
 def _fetch_justicia_vacantes_lista() -> list | None:
-    """
-    Lee vacantes.json como LISTA (no dict).
-    Cada item: organo_nombre, camara, tipo_justicia, cargo_tipo, concurso_en_tramite.
-    """
     data = _get_json(f"{_JUSTICIA_RAW}/vacantes.json")
     if isinstance(data, list):
         return data
@@ -138,22 +143,11 @@ def _fetch_justicia_vacantes_lista() -> list | None:
 
 
 def build_judicial_df() -> pd.DataFrame:
-    """
-    Construye IRI por organismo judicial usando magistrados.json y vacantes.json
-    del repo justicia (ambos son listas reales de la Magistratura PJN).
-
-    Lógica:
-    - Agrupa magistrados por 'camara' → un organismo IRI por cámara/tribunal
-    - Calcula tasa de vacancia real por cámara desde vacantes.json
-    - Genera IRI por cámara con datos reales
-    - Agrega 4 organismos institucionales (CSJN, Magistratura, MPF, MPD)
-    """
     log.info("Cargando datos judiciales (justicia)...")
 
     magistrados       = _fetch_justicia_magistrados()
     vacantes_lista    = _fetch_justicia_vacantes_lista()
 
-    # ── Tasa de vacancia global ───────────────────────────────────────────────
     tasa_vacancia_global = 32.9
     if vacantes_lista and isinstance(vacantes_lista, list) and len(vacantes_lista) > 0:
         total_vacantes = len(vacantes_lista)
@@ -165,7 +159,6 @@ def build_judicial_df() -> pd.DataFrame:
                 )
         log.info(f"  Tasa vacancia calculada: {tasa_vacancia_global}% ({total_vacantes} vacantes)")
 
-    # ── Vacantes por cámara ───────────────────────────────────────────────────
     vacantes_por_camara: dict[str, int] = {}
     if vacantes_lista:
         for v in vacantes_lista:
@@ -179,7 +172,6 @@ def build_judicial_df() -> pd.DataFrame:
 
     rows = []
 
-    # ── Organismos desde magistrados.json agrupados por cámara ───────────────
     if magistrados and isinstance(magistrados, list):
         df_mag = pd.DataFrame(magistrados)
 
@@ -238,7 +230,6 @@ def build_judicial_df() -> pd.DataFrame:
 
             log.info(f"  Cámaras/tribunales procesados: {len(rows)}")
 
-    # ── Organismos institucionales (siempre presentes) ───────────────────────
     institucionales = [
         ("Corte Suprema de Justicia",        "Control y Justicia"),
         ("Consejo de la Magistratura",        "Control y Justicia"),
@@ -262,8 +253,8 @@ def build_judicial_df() -> pd.DataFrame:
         })
 
     if not rows:
-        log.warning("  justicia: sin datos, usando fallback sintético")
-        return _fallback_judicial()
+        log.warning("  justicia: sin datos reales disponibles — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
@@ -305,43 +296,30 @@ def _fallback_judicial() -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _fetch_legis_kpis() -> dict | None:
-    """
-    Llama a /api/kpis del servidor legistativo.
-    El endpoint devuelve: total_diputados, nape, tpmp, cols, iap, iqp_global, rls, paridad, meta.
-    Normaliza los campos al esquema interno del connector.
-    """
     if LEGISTATIVO_API:
         data = _get_json(f"{LEGISTATIVO_API}/api/kpis")
         if data and data.get("total_diputados"):
-            # nape del endpoint = ratio inasistencia (0-1), ej: 0.0009 = 0.09% inasistencia
-            # Para IRI necesitamos invertirlo: alta asistencia = bajo riesgo operativo
             nape_raw = float(data.get("nape", 0.0))
-            # Si nape es casi 0 (asistencia ~100%), nape_score para IRI debe ser bajo (~5)
-            # Escalar: nape 0.0 → score 5 | nape 0.5 → score 50 | nape 1.0 → score 100
             nape_score = max(5.0, round(nape_raw * 100, 1))
 
             cols_raw = float(data.get("cols", 72.7))
-            # cols = % diputados con al menos 1 ley aprobada (0-100)
-            # Para IRI: bajo cols = alto riesgo → invertir
             cols_riesgo = round(100 - cols_raw, 1)
 
             iap_raw = float(data.get("iap") or 0.95)
             iap_score = round((1 - iap_raw) * 100, 1)
 
             iqp = float(data.get("iqp_global") or 0.5)
-            # IQP: ratio participación efectiva (0-1). Bajo IQP = alto riesgo datos
             iqp_riesgo = round((1 - iqp) * 60 + 15, 1)
 
             return {
-                "nape":            nape_score,    # ya en escala 0-100 para IRI
-                "cols":            cols_riesgo,   # riesgo por baja legislación activa
-                "iap":             iap_score,     # riesgo presupuestario
-                "iqp_global":      iqp_riesgo,    # riesgo datos
+                "nape":            nape_score,
+                "cols":            cols_riesgo,
+                "iap":             iap_score,
+                "iqp_global":      iqp_riesgo,
                 "total_diputados": int(data.get("total_diputados", 257)),
                 "fuente":          "monitor_legistativo/api/kpis (datos reales HCDN)",
-                "_raw":            data,          # datos originales para debug
+                "_raw":            data,
             }
-    # Fallback con valores históricos razonables
     return {
         "nape": 27.0, "cols": 27.3, "iap": 5.0, "iqp_global": 40.0,
         "total_diputados": 257,
@@ -361,7 +339,6 @@ def build_legislative_df() -> pd.DataFrame:
     bloques = _fetch_legis_bloques()
     rows    = []
 
-    # Campos ya normalizados a escala IRI (0-100) por _fetch_legis_kpis()
     nape_score = float(kpis.get("nape",       27.0)) if kpis else 27.0
     cols_riesgo = float(kpis.get("cols",      27.3)) if kpis else 27.3
     iap_score   = float(kpis.get("iap",        5.0)) if kpis else 5.0
@@ -371,8 +348,7 @@ def build_legislative_df() -> pd.DataFrame:
     log.info(f"  KPIs legistativo: nape_score={nape_score} cols_riesgo={cols_riesgo} "
              f"iap_score={iap_score} iqp_riesgo={iqp_riesgo}")
 
-    # Variables de compatibilidad para el bloque de institucionales
-    crc_score  = 35.0   # contratación legislativa — placeholder
+    crc_score  = 35.0
     iad_riesgo = iqp_riesgo
 
     institucional_leg = [
@@ -401,19 +377,16 @@ def build_legislative_df() -> pd.DataFrame:
             iqp_b     = b.get("iqp_promedio")
             tasa_apro = b.get("tasa_aprobacion")
 
-            # nape_b: riesgo operativo por inasistencia del bloque
             if asist_pct is not None:
                 nape_b = round(max(0, 100 - float(asist_pct)), 1)
             else:
                 nape_b = nape_score
 
-            # riesgo por baja tasa de aprobación
             if tasa_apro is not None:
                 col_b = round(max(0, 100 - float(tasa_apro)), 1)
             else:
                 col_b = cols_riesgo
 
-            # riesgo datos por IQP del bloque
             if iqp_b is not None:
                 dat_b = round(min(100, (1 - float(iqp_b)) * 60 + 15), 1)
             else:
@@ -433,8 +406,8 @@ def build_legislative_df() -> pd.DataFrame:
             })
 
     if not rows:
-        log.warning("  legistativo: sin datos, usando fallback sintético")
-        return _fallback_legislative()
+        log.warning("  legistativo: sin datos reales disponibles — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
@@ -574,8 +547,8 @@ def build_senado_df() -> pd.DataFrame:
             })
 
     if not rows:
-        log.warning("  senado: sin datos, usando fallback sintético")
-        return _fallback_senado()
+        log.warning("  senado: sin datos reales disponibles — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
@@ -612,13 +585,13 @@ def build_contratos_ar_df() -> pd.DataFrame:
     log.info("Cargando contratos Argentina (monitor_contratos_v2)...")
 
     if not CONTRATOS_AR_API:
-        log.warning("  CONTRATOS_AR_API_URL no definida — usando fallback sintético")
-        return build_ejecutivo_df()
+        log.warning("  CONTRATOS_AR_API_URL no definida — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     data = _get_json(f"{CONTRATOS_AR_API}/api/licitaciones/datos")
     if not data or data.get("sin_datos"):
-        log.warning("  contratos AR: sin datos disponibles — usando fallback")
-        return build_ejecutivo_df()
+        log.warning("  contratos AR: sin datos disponibles — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     rows = []
     flujo        = data.get("flujo", [])
@@ -698,8 +671,8 @@ def build_contratos_ar_df() -> pd.DataFrame:
         })
 
     if not rows:
-        log.warning("  contratos AR: sin organismos — usando fallback sintético")
-        return build_ejecutivo_df()
+        log.warning("  contratos AR: sin organismos — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
@@ -752,13 +725,13 @@ def build_tgn_df() -> pd.DataFrame:
     log.info("Cargando datos TGN Argentina (gob_bo_comprar_tgn — Tesorería General de la Nación)...")
 
     if not TGN_AR_API:
-        log.warning("  TGN_AR_API_URL no definida — usando fallback sintético")
-        return _fallback_tgn()
+        log.warning("  TGN_AR_API_URL no definida — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     data = _get_json(f"{TGN_AR_API}/api/licitaciones/datos")
     if not data or data.get("sin_datos"):
-        log.warning("  TGN AR: sin datos — usando fallback")
-        return _fallback_tgn()
+        log.warning("  TGN AR: sin datos — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     rows = []
     flujo        = data.get("flujo", [])
@@ -819,8 +792,8 @@ def build_tgn_df() -> pd.DataFrame:
         })
 
     if not rows:
-        log.warning("  TGN AR: sin organismos — usando fallback sintético")
-        return _fallback_tgn()
+        log.warning("  TGN AR: sin organismos — se omite del dataset (sin fallback sintético)")
+        return _empty_monitor_df()
 
     df = pd.DataFrame(rows)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
@@ -862,41 +835,49 @@ def build_monitor_completo() -> pd.DataFrame:
     - Datos reales de senadores (Senado AR)
     - Datos reales de monitor_contratos_v2 (Ejecutivo AR — BORA+COMPR.AR+TGN)
     - Datos reales de gob_bo_comprar_tgn (Tesorería General de la Nación AR)
-    Fallback sintético reproducible (seed fija) si algún repo no responde.
+
+    Si algún repo no responde, esa sección se omite del dataset. No se genera
+    ningún dato sintético: mejor un dataset más chico que uno con números
+    fabricados que aparenten ser reales.
     """
     dfs = []
 
     try:
         dfs.append(build_judicial_df())
     except Exception as e:
-        log.error(f"build_judicial_df falló: {e}")
-        dfs.append(_fallback_judicial())
+        log.error(f"build_judicial_df falló: {e} — se omite del dataset (sin fallback sintético)")
+        dfs.append(_empty_monitor_df())
 
     try:
         dfs.append(build_legislative_df())
     except Exception as e:
-        log.error(f"build_legislative_df falló: {e}")
-        dfs.append(_fallback_legislative())
+        log.error(f"build_legislative_df falló: {e} — se omite del dataset (sin fallback sintético)")
+        dfs.append(_empty_monitor_df())
 
     try:
         dfs.append(build_senado_df())
     except Exception as e:
-        log.error(f"build_senado_df falló: {e}")
-        dfs.append(_fallback_senado())
+        log.error(f"build_senado_df falló: {e} — se omite del dataset (sin fallback sintético)")
+        dfs.append(_empty_monitor_df())
 
     try:
         dfs.append(build_contratos_ar_df())
     except Exception as e:
-        log.error(f"build_contratos_ar_df falló: {e}")
-        dfs.append(build_ejecutivo_df())
+        log.error(f"build_contratos_ar_df falló: {e} — se omite del dataset (sin fallback sintético)")
+        dfs.append(_empty_monitor_df())
 
     try:
         dfs.append(build_tgn_df())
     except Exception as e:
-        log.error(f"build_tgn_df falló: {e}")
-        dfs.append(_fallback_tgn())
+        log.error(f"build_tgn_df falló: {e} — se omite del dataset (sin fallback sintético)")
+        dfs.append(_empty_monitor_df())
 
-    df = pd.concat(dfs, ignore_index=True)
+    dfs_con_datos = [d for d in dfs if not d.empty]
+    if not dfs_con_datos:
+        log.error("Ninguna fuente real respondió — dataset vacío (sin fallback sintético)")
+        return _empty_monitor_df()
+
+    df = pd.concat(dfs_con_datos, ignore_index=True)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
     if "Fuente" not in df.columns:
         df["Fuente"] = "desconocida"
