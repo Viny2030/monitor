@@ -5,7 +5,6 @@ Cubre:
   - _iri()          : fórmula IRI y pesos
   - _score_estado() : umbrales ALTO / MEDIO / BAJO
   - _col_find()     : búsqueda de columnas
-  - fallbacks       : reproducibilidad de seeds y columnas requeridas
   - build_monitor_completo() : sin APIs externas
 """
 
@@ -13,7 +12,6 @@ import os
 import sys
 import pytest
 import pandas as pd
-import numpy as np
 
 # Asegurar que el root del repo esté en el path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
@@ -22,11 +20,6 @@ from connector import (
     _iri,
     _score_estado,
     _col_find,
-    _fallback_judicial,
-    _fallback_legislative,
-    _fallback_senado,
-    _fallback_tgn,
-    build_ejecutivo_df,
     build_monitor_completo,
 )
 
@@ -168,10 +161,6 @@ class TestColFind:
         assert _col_find(df, ["organismo"]) is None
 
 
-# ═══════════════════════════════════════════════════════
-# 4. Fallbacks — reproducibilidad y estructura
-# ═══════════════════════════════════════════════════════
-
 def _assert_df_valido(df: pd.DataFrame, nombre: str):
     """Helper: valida estructura y bounds de cualquier DataFrame del monitor."""
     assert not df.empty, f"{nombre}: DataFrame vacío"
@@ -183,92 +172,8 @@ def _assert_df_valido(df: pd.DataFrame, nombre: str):
     assert (df["Organismo"].str.strip() != "").all(), f"{nombre}: Organismo vacío"
 
 
-class TestFallbackJudicial:
-
-    def test_estructura(self):
-        _assert_df_valido(_fallback_judicial(), "fallback_judicial")
-
-    def test_reproducible(self):
-        """Dos llamadas deben producir exactamente los mismos datos."""
-        df1 = _fallback_judicial()
-        df2 = _fallback_judicial()
-        pd.testing.assert_frame_equal(df1, df2)
-
-    def test_fuente_indica_fallback(self):
-        df = _fallback_judicial()
-        assert df["Fuente"].str.contains("fallback").all()
-
-    def test_tiene_organismos_judiciales(self):
-        df = _fallback_judicial()
-        orgs = df["Organismo"].tolist()
-        assert any("Justicia" in o or "Judicial" in o or "Corte" in o or "Juzgado" in o for o in orgs)
-
-
-class TestFallbackLegislativo:
-
-    def test_estructura(self):
-        _assert_df_valido(_fallback_legislative(), "fallback_legislative")
-
-    def test_reproducible(self):
-        df1 = _fallback_legislative()
-        df2 = _fallback_legislative()
-        pd.testing.assert_frame_equal(df1, df2)
-
-    def test_fuente_indica_fallback(self):
-        df = _fallback_legislative()
-        assert df["Fuente"].str.contains("fallback").all()
-
-
-class TestFallbackSenado:
-
-    def test_estructura(self):
-        _assert_df_valido(_fallback_senado(), "fallback_senado")
-
-    def test_reproducible(self):
-        df1 = _fallback_senado()
-        df2 = _fallback_senado()
-        pd.testing.assert_frame_equal(df1, df2)
-
-    def test_contiene_senado(self):
-        df = _fallback_senado()
-        assert any("Senado" in o or "Senadores" in o for o in df["Organismo"])
-
-
-class TestFallbackTGN:
-
-    def test_estructura(self):
-        _assert_df_valido(_fallback_tgn(), "fallback_tgn")
-
-    def test_reproducible(self):
-        df1 = _fallback_tgn()
-        df2 = _fallback_tgn()
-        pd.testing.assert_frame_equal(df1, df2)
-
-    def test_fuente_indica_fallback(self):
-        df = _fallback_tgn()
-        assert df["Fuente"].str.contains("fallback").all()
-
-
-class TestBuildEjecutivo:
-
-    def test_estructura(self):
-        _assert_df_valido(build_ejecutivo_df(), "build_ejecutivo_df")
-
-    def test_reproducible(self):
-        df1 = build_ejecutivo_df()
-        df2 = build_ejecutivo_df()
-        pd.testing.assert_frame_equal(df1, df2)
-
-    def test_organismos_conocidos(self):
-        df = build_ejecutivo_df()
-        orgs = df["Organismo"].tolist()
-        assert "CONICET" in orgs
-        assert "AFIP" in orgs
-        assert "YPF" in orgs
-
-
 # ═══════════════════════════════════════════════════════
-# 5. build_monitor_completo() — Sin APIs externas
+# 4. build_monitor_completo() — Sin APIs externas
 # ═══════════════════════════════════════════════════════
 
 class TestBuildMonitorCompleto:

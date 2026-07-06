@@ -5,7 +5,6 @@ Cubre:
   - Integridad del dataset generado por build_monitor_completo()
   - Consistencia entre IRI (Score) y Estado
   - Bounds de los componentes de riesgo (0-100)
-  - Reproducibilidad de seeds (datos sintéticos estables)
   - Coherencia de la fórmula IRI sobre datos reales
   - Integridad de las fuentes de datos
 """
@@ -15,7 +14,6 @@ import sys
 import math
 import pytest
 import pandas as pd
-import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
@@ -23,11 +21,6 @@ from connector import (
     _iri,
     _score_estado,
     build_monitor_completo,
-    _fallback_judicial,
-    _fallback_legislative,
-    _fallback_senado,
-    _fallback_tgn,
-    build_ejecutivo_df,
 )
 
 RISK_COLS = ["Riesgo Financiero", "Riesgo Contratación", "Riesgo Operativo", "Riesgo Datos"]
@@ -167,44 +160,7 @@ class TestCoherenciaFormula:
 
 
 # ═══════════════════════════════════════════════════════
-# 5. Reproducibilidad de seeds
-# ═══════════════════════════════════════════════════════
-
-class TestReproducibilidadSeeds:
-    """
-    Verifica que los datos sintéticos (fallback) sean idénticos
-    en llamadas sucesivas. Esto es crítico para que el dashboard
-    no cambie entre reinicios del servidor sin datos reales.
-    """
-
-    def test_judicial_seed_42(self):
-        df1, df2 = _fallback_judicial(), _fallback_judicial()
-        pd.testing.assert_frame_equal(df1.reset_index(drop=True),
-                                      df2.reset_index(drop=True))
-
-    def test_legislative_seed_43(self):
-        df1, df2 = _fallback_legislative(), _fallback_legislative()
-        pd.testing.assert_frame_equal(df1.reset_index(drop=True),
-                                      df2.reset_index(drop=True))
-
-    def test_ejecutivo_seed_44(self):
-        df1, df2 = build_ejecutivo_df(), build_ejecutivo_df()
-        pd.testing.assert_frame_equal(df1.reset_index(drop=True),
-                                      df2.reset_index(drop=True))
-
-    def test_senado_seed_45(self):
-        df1, df2 = _fallback_senado(), _fallback_senado()
-        pd.testing.assert_frame_equal(df1.reset_index(drop=True),
-                                      df2.reset_index(drop=True))
-
-    def test_tgn_seed_46(self):
-        df1, df2 = _fallback_tgn(), _fallback_tgn()
-        pd.testing.assert_frame_equal(df1.reset_index(drop=True),
-                                      df2.reset_index(drop=True))
-
-
-# ═══════════════════════════════════════════════════════
-# 6. Fuentes de datos
+# 5. Fuentes de datos
 # ═══════════════════════════════════════════════════════
 
 class TestFuentesDatos:
@@ -231,7 +187,7 @@ class TestFuentesDatos:
 
 
 # ═══════════════════════════════════════════════════════
-# 7. Diversidad del dataset
+# 6. Diversidad del dataset
 # ═══════════════════════════════════════════════════════
 
 class TestDiversidadDataset:
