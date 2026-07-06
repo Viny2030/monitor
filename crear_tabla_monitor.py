@@ -1,6 +1,10 @@
+import os
 import psycopg2
 
-DB = "postgresql://postgres:zKiRuniKBLpYVjsRmgMKCJoIsqeygfUi@tramway.proxy.rlwy.net:32055/railway"
+DB = os.getenv("MONITOR_DATABASE_URL") or os.getenv("DATABASE_URL")
+if not DB:
+    raise RuntimeError("MONITOR_DATABASE_URL (o DATABASE_URL) no está definida en el entorno")
+DB = DB.replace("postgres://", "postgresql://", 1)
 
 conn = psycopg2.connect(DB)
 cur = conn.cursor()
