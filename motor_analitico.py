@@ -1,5 +1,5 @@
 """
-src/motor_analitico.py
+motor_analitico.py
 ======================
 Motor analítico del Monitor IRI.
 
@@ -8,7 +8,7 @@ Ahora: consume datos REALES desde connector.py (justicia + monitor_legistativo)
        con fallback sintético reproducible (seed fija) si los repos no responden.
 
 Uso:
-    python src/motor_analitico.py
+    python motor_analitico.py
     → genera data/processed/monitor_completo.csv
 """
 
