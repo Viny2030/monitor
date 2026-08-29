@@ -57,3 +57,4 @@ jobs:
               \"subject\": \"❌ Refresh FALLÓ - Monitor IRI ${{ steps.fecha.outputs.fecha }}\",
               \"text\": \"El refresh diario falló.\nVer logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
             }"
+        # keepalive: 2026-08-29
