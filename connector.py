@@ -87,15 +87,40 @@ def _get_csv(url: str) -> pd.DataFrame | None:
         return None
 
 def _score_estado(iri: float) -> str:
+    if iri is None or iri != iri:
+        return "⚪ SIN DATOS"
     if iri >= 60:
         return "🔴 ALTO"
     elif iri >= 30:
         return "🟡 MEDIO"
     return "🟢 BAJO"
 
+_PESOS = (0.35, 0.30, 0.20, 0.15)  # Financiero, Contratación, Operativo, Datos
+
+
 def _iri(r_fin, r_con, r_ope, r_dat) -> float:
-    """Fórmula IRI: Financiero(35%) + Contratación(30%) + Operativo(20%) + Datos(15%)"""
-    return round(r_fin * 0.35 + r_con * 0.30 + r_ope * 0.20 + r_dat * 0.15, 2)
+    """Fórmula IRI: Financiero(35%) + Contratación(30%) + Operativo(20%) + Datos(15%).
+
+    Un componente en None significa "sin dato" para ese organismo. Antes se
+    rellenaba con constantes (40, 35, 25…) que pesaban hasta el 65% del índice
+    sin medir nada; ahora el IRI se calcula con los componentes que sí tienen
+    dato, reponderando sus pesos para que sumen 100%."""
+    vals = [(v, w) for v, w in zip((r_fin, r_con, r_ope, r_dat), _PESOS)
+            if v is not None and v == v]
+    if not vals:
+        return None
+    return round(sum(v * w for v, w in vals) / sum(w for _, w in vals), 2)
+
+
+def _arreglar_texto(t) -> str:
+    """'FundaciÃ³n' → 'Fundación' (UTF-8 leído como Latin-1 en la fuente)."""
+    t = str(t)
+    if "Ã" in t or "Â" in t:
+        try:
+            return t.encode("latin-1").decode("utf-8")
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            pass
+    return t
 
 def _col_find(df: pd.DataFrame, keywords: list) -> str | None:
     """Busca la primera columna cuyo nombre contenga alguna de las keywords."""
@@ -212,7 +237,7 @@ def build_judicial_df() -> pd.DataFrame:
                 )
 
                 r_fin = round(min(100, max(10, tasa_vac_camara * 1.5)), 1)
-                r_con = 40.0
+                r_con = None  # sin datos de contrataciones por cámara (antes: 40 fijo)
                 r_ope = round(min(100, max(10, tasa_vac_camara * 1.2)), 1)
                 r_dat = round(min(100, max(15, tasa_vac_camara * 0.8 + 10)), 1)
 
@@ -237,7 +262,7 @@ def build_judicial_df() -> pd.DataFrame:
     ]
     for org, area in institucionales:
         r_fin = round(max(20, min(80, tasa_vacancia_global * 1.2)), 1)
-        r_con = 40.0
+        r_con = None  # sin datos de contrataciones (antes: 40 fijo)
         r_ope = round(max(25, min(75, tasa_vacancia_global * 1.5)), 1)
         r_dat = round(max(20, min(70, tasa_vacancia_global)), 1)
         rows.append({
@@ -275,14 +300,14 @@ def _fetch_legis_kpis() -> dict | None:
             nape_raw = float(data.get("nape", 0.0))
             nape_score = max(5.0, round(nape_raw * 100, 1))
 
-            cols_raw = float(data.get("cols", 72.7))
-            cols_riesgo = round(100 - cols_raw, 1)
+            cols_raw = data.get("cols")
+            cols_riesgo = round(100 - float(cols_raw), 1) if cols_raw is not None else None
 
-            iap_raw = float(data.get("iap") or 0.95)
-            iap_score = round((1 - iap_raw) * 100, 1)
+            iap_raw = data.get("iap")
+            iap_score = round((1 - float(iap_raw)) * 100, 1) if iap_raw is not None else None
 
-            iqp = float(data.get("iqp_global") or 0.5)
-            iqp_riesgo = round((1 - iqp) * 60 + 15, 1)
+            iqp = data.get("iqp_global")
+            iqp_riesgo = round((1 - float(iqp)) * 60 + 15, 1) if iqp is not None else None
 
             return {
                 "nape":            nape_score,
@@ -293,11 +318,9 @@ def _fetch_legis_kpis() -> dict | None:
                 "fuente":          "monitor_legistativo/api/kpis (datos reales HCDN)",
                 "_raw":            data,
             }
-    return {
-        "nape": 27.0, "cols": 27.3, "iap": 5.0, "iqp_global": 40.0,
-        "total_diputados": 257,
-        "fuente": "monitor_legistativo fallback histórico",
-    }
+    # Sin API no se inventan valores: antes devolvía un "fallback histórico"
+    # fijo (nape 27, cols 27.3, iap 5, iqp 40) que se mostraba como dato.
+    return None
 
 def _fetch_legis_bloques() -> list | None:
     if LEGISTATIVO_API:
@@ -312,16 +335,24 @@ def build_legislative_df() -> pd.DataFrame:
     bloques = _fetch_legis_bloques()
     rows    = []
 
-    nape_score = float(kpis.get("nape",       27.0)) if kpis else 27.0
-    cols_riesgo = float(kpis.get("cols",      27.3)) if kpis else 27.3
-    iap_score   = float(kpis.get("iap",        5.0)) if kpis else 5.0
-    iqp_riesgo  = float(kpis.get("iqp_global",40.0)) if kpis else 40.0
-    fuente_kpis = kpis.get("fuente", "monitor_legistativo") if kpis else "monitor_legistativo"
+    if not kpis:
+        log.warning("  legistativo: API sin respuesta — se omite del dataset (sin valores inventados)")
+        return _empty_monitor_df()
+    nape_score  = kpis.get("nape")
+    cols_riesgo = kpis.get("cols")
+    iap_score   = kpis.get("iap")
+    iqp_riesgo  = kpis.get("iqp_global")
+    fuente_kpis = kpis.get("fuente", "monitor_legistativo")
+
+    def _ope(nape, cols):
+        """Operativo = 70% inasistencia (NAPE) + 30% no-aprobación (COLS); si
+        falta uno, se usa el que hay."""
+        partes = [(v, w) for v, w in ((nape, 0.7), (cols, 0.3)) if v is not None]
+        return round(min(100, sum(v * w for v, w in partes) / sum(w for _, w in partes)), 1) if partes else None
 
     log.info(f"  KPIs legistativo: nape_score={nape_score} cols_riesgo={cols_riesgo} "
              f"iap_score={iap_score} iqp_riesgo={iqp_riesgo}")
 
-    crc_score  = 35.0
     iad_riesgo = iqp_riesgo
 
     institucional_leg = [
@@ -331,10 +362,10 @@ def build_legislative_df() -> pd.DataFrame:
         ("Defensoría del Pueblo",                  "Control y Justicia"),
     ]
     for org, area in institucional_leg:
-        r_fin = round(min(100, iap_score + crc_score * 0.2), 1)
-        r_con = 35.0
-        r_ope = round(min(100, nape_score * 0.7 + cols_riesgo * 0.3), 1)
-        r_dat = round(iad_riesgo, 1)
+        r_fin = round(min(100, iap_score), 1) if iap_score is not None else None
+        r_con = None  # sin datos de contrataciones (antes: 35 fijo)
+        r_ope = _ope(nape_score, cols_riesgo)
+        r_dat = round(iad_riesgo, 1) if iad_riesgo is not None else None
         rows.append({
             "Organismo": org, "Area": area,
             "Riesgo Financiero": r_fin, "Riesgo Contratación": r_con,
@@ -365,10 +396,11 @@ def build_legislative_df() -> pd.DataFrame:
             else:
                 dat_b = iqp_riesgo
 
-            r_fin = round(min(100, iap_score + 5), 1)
-            r_con = 35.0
-            r_ope = round(min(100, nape_b * 0.6 + col_b * 0.4), 1)
-            r_dat = round(dat_b, 1)
+            r_fin = round(min(100, iap_score), 1) if iap_score is not None else None
+            r_con = None  # sin datos de contrataciones (antes: 35 fijo)
+            partes = [(v, w) for v, w in ((nape_b, 0.6), (col_b, 0.4)) if v is not None]
+            r_ope = round(min(100, sum(v * w for v, w in partes) / sum(w for _, w in partes)), 1) if partes else None
+            r_dat = round(dat_b, 1) if dat_b is not None else None
             rows.append({
                 "Organismo": f"Bloque {nombre}",
                 "Area": "Poder Legislativo",
@@ -444,14 +476,16 @@ def build_senado_df() -> pd.DataFrame:
             participation_avg = round(sum(partic_vals) / len(partic_vals), 1)
 
     if participation_avg is None:
-        participation_avg = 72.0
-        log.warning("  senado: sin participation_pct, usando default 72%")
-
-    inasistencia_global = round(100 - participation_avg, 1)
-    r_fin_cam = 35.0
-    r_con_cam = 35.0
-    r_ope_cam = round(min(100, inasistencia_global * 1.1), 1)
-    r_dat_cam = 40.0
+        log.warning("  senado: sin participation_pct — Cámara sin dato (antes se usaba 72% fijo)")
+        inasistencia_global = None
+    else:
+        inasistencia_global = round(100 - participation_avg, 1)
+    # Sólo hay dato de participación: financiero, contratación y datos quedan
+    # "sin dato" (antes 35, 35 y 40 fijos = 80% del índice).
+    r_fin_cam = None
+    r_con_cam = None
+    r_ope_cam = round(min(100, inasistencia_global * 1.1), 1) if inasistencia_global is not None else None
+    r_dat_cam = None
     rows.append({
         "Organismo": "Cámara de Senadores", "Area": "Poder Legislativo",
         "Riesgo Financiero": r_fin_cam, "Riesgo Contratación": r_con_cam,
@@ -486,15 +520,13 @@ def build_senado_df() -> pd.DataFrame:
                     pass
             if part_p is None:
                 part_p = participation_avg
-
-            inasist_p = round(100 - part_p, 1)
-            r_ope     = round(min(100, inasist_p * 1.1), 1)
+            r_ope = round(min(100, (100 - part_p) * 1.1), 1) if part_p is not None else None
             rows.append({
                 "Organismo": f"Senado — {partido} ({bancas} bancas)",
                 "Area": "Poder Legislativo",
-                "Riesgo Financiero": 35.0, "Riesgo Contratación": 35.0,
-                "Riesgo Operativo":  r_ope, "Riesgo Datos":        40.0,
-                "IRI (Score)": _iri(35.0, 35.0, r_ope, 40.0),
+                "Riesgo Financiero": None, "Riesgo Contratación": None,
+                "Riesgo Operativo":  r_ope, "Riesgo Datos":        None,
+                "IRI (Score)": _iri(None, None, r_ope, None),
                 "Fuente": "senadores/reporte_partido_senado CSV",
             })
 
@@ -510,6 +542,48 @@ def build_senado_df() -> pd.DataFrame:
 # ═══════════════════════════════════════════════════════════════════════════════
 # 4. CONTRATOS ARGENTINA — repo: monitor_contratos_v2
 # ═══════════════════════════════════════════════════════════════════════════════
+
+
+def _organismos_compras(registros: list, patron_directa: str, area: str, fuente: str,
+                        n: int = 25) -> list[dict]:
+    """Un renglón por organismo comprador con el % de procesos que son
+    contratación directa (u otros procedimientos sin competencia abierta).
+
+    Cambios respecto de la versión anterior:
+      * se toman los n organismos con MÁS procesos (antes: los n primeros por
+        número de código, es decir, al azar);
+      * el % de directas se usa tal cual (antes se multiplicaba por 1,5 y
+        quedaban 11 de 25 organismos clavados en 100);
+      * se arreglan los nombres con caracteres rotos y se unifican los
+        duplicados por código SAF;
+      * financiero, operativo y datos quedan "sin dato": eran constantes
+        (40/25 o 42/30) y el índice de la fuente vale 1 en todos los casos.
+    """
+    df = pd.DataFrame(registros)
+    col_org  = _col_find(df, ["organismo", "jurisdiccion", "entidad", "unidad", "ministerio"])
+    col_tipo = _col_find(df, ["tipo", "modalidad", "proceso"])
+    if not col_org or not col_tipo:
+        return []
+    df = df[df[col_org].notna()].copy()
+    df["_org"] = df[col_org].map(_arreglar_texto).str.strip()
+    df = df[~df["_org"].isin(["", "nan", "n/a", "N/A"])]
+    # Unificar por código SAF ("202 - Instituto …"): mismo código = mismo organismo
+    df["_clave"] = df["_org"].str.extract(r"^(\d+)\s*-", expand=False).fillna(df["_org"])
+    nombres = df.groupby("_clave")["_org"].agg(lambda x: x.value_counts().index[0])
+    df["_directa"] = df[col_tipo].map(_arreglar_texto).str.upper().str.contains(patron_directa, na=False)
+    anios = pd.to_numeric(df.get("Ejercicio"), errors="coerce").dropna() if "Ejercicio" in df else pd.Series(dtype=float)
+    periodo = (f" {int(anios.min())}" + (f"-{int(anios.max())}" if anios.max() != anios.min() else "")) if len(anios) else ""
+    rows = []
+    for clave, grp in sorted(df.groupby("_clave"), key=lambda kv: len(kv[1]), reverse=True)[:n]:
+        r_con = round(grp["_directa"].mean() * 100, 1)
+        rows.append({
+            "Organismo": nombres[clave][:80], "Area": area,
+            "Riesgo Financiero": None, "Riesgo Contratación": r_con,
+            "Riesgo Operativo": None, "Riesgo Datos": None,
+            "IRI (Score)": _iri(None, r_con, None, None),
+            "Fuente": f"{fuente} (COMPR.AR{periodo}, {len(grp)} procesos)",
+        })
+    return rows
 
 def build_contratos_ar_df() -> pd.DataFrame:
     log.info("Cargando contratos Argentina (monitor_contratos_v2)...")
@@ -546,30 +620,8 @@ def build_contratos_ar_df() -> pd.DataFrame:
 
     comprar = data.get("comprar", [])
     if comprar:
-        df_comp  = pd.DataFrame(comprar)
-        col_org  = _col_find(df_comp, ["organismo", "unidad", "jurisdiccion", "entidad"])
-        col_tipo = _col_find(df_comp, ["tipo", "proceso", "modalidad"])
-
-        if col_org:
-            for org, grp in list(df_comp.groupby(col_org))[:25]:
-                org_str = str(org).strip()
-                if not org_str or org_str in ("", "nan", "n/a", "N/A"):
-                    continue
-                total    = len(grp)
-                directos = 0
-                if col_tipo:
-                    directos = grp[col_tipo].astype(str).str.upper().str.contains(
-                        "DIRECT|CONTRAT", na=False).sum()
-                r_con = round(
-                    min(100, (directos / total * 100 * 1.5) if total > 0 else r_con_global), 1
-                )
-                rows.append({
-                    "Organismo": org_str[:80], "Area": "Administración Central",
-                    "Riesgo Financiero": r_fin_global, "Riesgo Contratación": r_con,
-                    "Riesgo Operativo":  40.0,         "Riesgo Datos":        25.0,
-                    "IRI (Score)": _iri(r_fin_global, r_con, 40.0, 25.0),
-                    "Fuente": "monitor_contratos_v2/comprar",
-                })
+        rows = _organismos_compras(comprar, r"DIRECT", "Administración Central",
+                                   "monitor_contratos_v2/comprar")
 
     if not rows:
         tgn = data.get("tgn", [])
@@ -582,10 +634,10 @@ def build_contratos_ar_df() -> pd.DataFrame:
                     if not jur_str or jur_str in ("", "nan", "n/a"):
                         continue
                     rows.append({
-                        "Organismo": jur_str[:80], "Area": "Administración Central",
-                        "Riesgo Financiero": r_fin_global, "Riesgo Contratación": r_con_global,
-                        "Riesgo Operativo":  40.0,         "Riesgo Datos":        25.0,
-                        "IRI (Score)": _iri(r_fin_global, r_con_global, 40.0, 25.0),
+                        "Organismo": _arreglar_texto(jur_str)[:80], "Area": "Administración Central",
+                        "Riesgo Financiero": None, "Riesgo Contratación": r_con_global,
+                        "Riesgo Operativo":  None, "Riesgo Datos":        None,
+                        "IRI (Score)": _iri(None, r_con_global, None, None),
                         "Fuente": "monitor_contratos_v2/tgn",
                     })
 
@@ -594,9 +646,9 @@ def build_contratos_ar_df() -> pd.DataFrame:
         rows.append({
             "Organismo": "Ejecutivo Nacional (agregado BORA+COMPR.AR+TGN)",
             "Area": "Administración Central",
-            "Riesgo Financiero": r_fin_global, "Riesgo Contratación": r_con_global,
-            "Riesgo Operativo":  40.0,         "Riesgo Datos":        25.0,
-            "IRI (Score)": _iri(r_fin_global, r_con_global, 40.0, 25.0),
+            "Riesgo Financiero": None, "Riesgo Contratación": r_con_global,
+            "Riesgo Operativo":  None, "Riesgo Datos":        None,
+            "IRI (Score)": _iri(None, r_con_global, None, None),
             "Fuente": f"monitor_contratos_v2/flujo ({totales.get('flujo', 0)} procesos)",
         })
 
@@ -648,38 +700,16 @@ def build_tgn_df() -> pd.DataFrame:
 
     source_data = data.get("comprar", []) or data.get("tgn", [])
     if source_data:
-        df_src  = pd.DataFrame(source_data)
-        col_org = _col_find(df_src, ["organismo", "jurisdiccion", "entidad", "unidad", "ministerio"])
-        col_tipo = _col_find(df_src, ["tipo", "modalidad", "proceso"])
-
-        if col_org:
-            for org, grp in list(df_src.groupby(col_org))[:20]:
-                org_str = str(org).strip()
-                if not org_str or org_str in ("", "nan", "n/a"):
-                    continue
-                total    = len(grp)
-                directos = 0
-                if col_tipo:
-                    directos = grp[col_tipo].astype(str).str.upper().str.contains(
-                        "DIRECT|CONTRAT|MENOR", na=False).sum()
-                r_con = round(
-                    min(100, (directos / total * 100 * 1.3) if total > 0 else r_con_global), 1
-                )
-                rows.append({
-                    "Organismo": org_str[:80], "Area": "Tesorería General de la Nación",
-                    "Riesgo Financiero": r_fin_global, "Riesgo Contratación": r_con,
-                    "Riesgo Operativo":  42.0,         "Riesgo Datos":        30.0,
-                    "IRI (Score)": _iri(r_fin_global, r_con, 42.0, 30.0),
-                    "Fuente": "gob_bo_comprar_tgn/real",
-                })
+        rows = _organismos_compras(source_data, r"DIRECT|MENOR", "Tesorería General de la Nación",
+                                   "gob_bo_comprar_tgn/real", n=20)
 
     if not rows and flujo:
         rows.append({
             "Organismo": "Ejecutivo Nacional — TGN (agregado ejecución presupuestaria)",
             "Area": "Tesorería General de la Nación",
-            "Riesgo Financiero": r_fin_global, "Riesgo Contratación": r_con_global,
-            "Riesgo Operativo":  42.0,         "Riesgo Datos":        30.0,
-            "IRI (Score)": _iri(r_fin_global, r_con_global, 42.0, 30.0),
+            "Riesgo Financiero": None, "Riesgo Contratación": r_con_global,
+            "Riesgo Operativo":  None, "Riesgo Datos":        None,
+            "IRI (Score)": _iri(None, r_con_global, None, None),
             "Fuente": f"gob_bo_comprar_tgn/flujo ({len(flujo)} procesos)",
         })
 
@@ -747,7 +777,13 @@ def build_monitor_completo() -> pd.DataFrame:
         return _empty_monitor_df()
 
     df = pd.concat(dfs_con_datos, ignore_index=True)
+    componentes = ["Riesgo Financiero", "Riesgo Contratación", "Riesgo Operativo", "Riesgo Datos"]
+    df["Componentes con dato"] = df[componentes].notna().sum(axis=1)
     df["Estado"] = df["IRI (Score)"].apply(_score_estado)
+    # Con un solo componente medido no se marca ALTO: queda en MEDIO como dato
+    # parcial (p. ej. organismos cuyo IRI es sólo el % de contrataciones directas).
+    parcial = (df["Componentes con dato"] < 2) & df["Estado"].str.contains("ALTO", na=False)
+    df.loc[parcial, "Estado"] = "🟡 MEDIO (dato parcial)"
     if "Fuente" not in df.columns:
         df["Fuente"] = "desconocida"
 

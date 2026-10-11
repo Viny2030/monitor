@@ -25,7 +25,7 @@ from connector import (
 
 RISK_COLS = ["Riesgo Financiero", "Riesgo Contratación", "Riesgo Operativo", "Riesgo Datos"]
 REQUIRED_COLS = ["Organismo", "Area", "IRI (Score)", "Estado", "Fuente"] + RISK_COLS
-VALID_ESTADOS = {"🔴 ALTO", "🟡 MEDIO", "🟢 BAJO"}
+VALID_ESTADOS = {"🔴 ALTO", "🟡 MEDIO", "🟢 BAJO", "🟡 MEDIO (dato parcial)", "⚪ SIN DATOS"}
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +66,9 @@ class TestIntegridadEstructural:
         assert pd.api.types.is_numeric_dtype(df_completo["IRI (Score)"])
 
     def test_tipos_de_datos_riesgo_financiero(self, df_completo):
-        assert pd.api.types.is_numeric_dtype(df_completo["Riesgo Financiero"])
+        # Puede venir entero vacío (todo "sin dato") → se valida lo que hay
+        assert pd.to_numeric(df_completo["Riesgo Financiero"], errors="coerce").notna().sum() == \
+            df_completo["Riesgo Financiero"].notna().sum()
 
 
 # ═══════════════════════════════════════════════════════
@@ -80,16 +82,20 @@ class TestBoundsValores:
             f"IRI fuera de rango: {df_completo['IRI (Score)'].describe()}"
 
     def test_riesgo_financiero_entre_0_100(self, df_completo):
-        assert df_completo["Riesgo Financiero"].between(0, 100).all()
+        # Componentes "sin dato" (NaN) no entran en el IRI; se validan los presentes
+        assert df_completo["Riesgo Financiero"].dropna().between(0, 100).all()
 
     def test_riesgo_contratacion_entre_0_100(self, df_completo):
-        assert df_completo["Riesgo Contratación"].between(0, 100).all()
+        # Componentes "sin dato" (NaN) no entran en el IRI; se validan los presentes
+        assert df_completo["Riesgo Contratación"].dropna().between(0, 100).all()
 
     def test_riesgo_operativo_entre_0_100(self, df_completo):
-        assert df_completo["Riesgo Operativo"].between(0, 100).all()
+        # Componentes "sin dato" (NaN) no entran en el IRI; se validan los presentes
+        assert df_completo["Riesgo Operativo"].dropna().between(0, 100).all()
 
     def test_riesgo_datos_entre_0_100(self, df_completo):
-        assert df_completo["Riesgo Datos"].between(0, 100).all()
+        # Componentes "sin dato" (NaN) no entran en el IRI; se validan los presentes
+        assert df_completo["Riesgo Datos"].dropna().between(0, 100).all()
 
     def test_iri_no_infinito(self, df_completo):
         assert not df_completo["IRI (Score)"].apply(math.isinf).any()

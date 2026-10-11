@@ -35,7 +35,7 @@ REQUIRED_COLS = [
     "Fuente",
 ]
 
-VALID_ESTADOS = {"🔴 ALTO", "🟡 MEDIO", "🟢 BAJO"}
+VALID_ESTADOS = {"🔴 ALTO", "🟡 MEDIO", "🟢 BAJO", "🟡 MEDIO (dato parcial)", "⚪ SIN DATOS"}
 
 
 # ═══════════════════════════════════════════════════════
@@ -122,7 +122,7 @@ class TestScoreEstado:
 
     def test_resultado_siempre_valido(self):
         """Para cualquier valor entre 0-100 el estado debe ser uno de los tres válidos."""
-        valid = {"🔴 ALTO", "🟡 MEDIO", "🟢 BAJO"}
+        valid = {"🔴 ALTO", "🟡 MEDIO", "🟢 BAJO", "🟡 MEDIO (dato parcial)", "⚪ SIN DATOS"}
         for val in [0, 15, 29.9, 30, 45, 59.9, 60, 75, 100]:
             assert _score_estado(val) in valid
 

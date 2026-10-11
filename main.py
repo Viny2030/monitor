@@ -46,16 +46,24 @@ def _save_to_db(df: pd.DataFrame):
         import psycopg2.extras
         cur = conn.cursor()
         cur.execute("DELETE FROM monitor_iri WHERE fecha_datos = CURRENT_DATE")
+        def _num(v):
+            # "sin dato" se guarda como NULL (antes se convertía en 0)
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                return None
+            return None if v != v else v
+
         rows = []
         for _, row in df.iterrows():
             rows.append((
                 str(row.get("Organismo", "")),
                 str(row.get("Area", "")),
-                float(row.get("Riesgo Financiero", 0) or 0),
-                float(row.get("Riesgo Contratación", 0) or 0),
-                float(row.get("Riesgo Operativo", 0) or 0),
-                float(row.get("Riesgo Datos", 0) or 0),
-                float(row.get("IRI (Score)", 0) or 0),
+                _num(row.get("Riesgo Financiero")),
+                _num(row.get("Riesgo Contratación")),
+                _num(row.get("Riesgo Operativo")),
+                _num(row.get("Riesgo Datos")),
+                _num(row.get("IRI (Score)")),
                 str(row.get("Estado", "")),
                 str(row.get("Fuente", "")),
             ))
@@ -247,7 +255,8 @@ def get_resumen():
         "iri_max":             round(df["IRI (Score)"].max(), 2),
         "iri_min":             round(df["IRI (Score)"].min(), 2),
         "alto_riesgo":  int((df["Estado"] == "\U0001f534 ALTO").sum()),
-        "medio_riesgo": int((df["Estado"] == "\U0001f7e1 MEDIO").sum()),
+        "medio_riesgo": int(df["Estado"].astype(str).str.contains("MEDIO").sum()),
+        "dato_parcial": int(df["Estado"].astype(str).str.contains("parcial").sum()),
         "bajo_riesgo":  int((df["Estado"] == "\U0001f7e2 BAJO").sum()),
     }
     por_area = (
@@ -473,7 +482,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <div class="card"><div class="label">Organismos monitoreados</div><div class="value blue" id="m-total">-</div></div>
     <div class="card"><div class="label">IRI Promedio (0-100)</div><div class="value" id="m-avg">-</div></div>
     <div class="card"><div class="label">&#x1F534; Alto riesgo (IRI &ge;60)</div><div class="value red" id="m-alto">-</div></div>
-    <div class="card"><div class="label">&#x1F7E1; Riesgo medio (IRI 30-59)</div><div class="value amber" id="m-medio">-</div></div>
+    <div class="card"><div class="label">&#x1F7E1; Riesgo medio (IRI 30-59 o dato parcial)</div><div class="value amber" id="m-medio">-</div></div>
     <div class="card"><div class="label">&#x1F7E2; Bajo riesgo (IRI &lt;30)</div><div class="value green" id="m-bajo">-</div></div>
   </div>
 
@@ -521,7 +530,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     </div>
     <div id="table-count" style="font-size:0.75rem;color:#64748b;margin-top:0.4rem;"></div>
     <div class="leyenda">
-      <span><b>Score IRI</b> = Financiero x35% + Contratacion x30% + Operativo x20% + Datos x15%</span>
+      <span><b>Score IRI</b> = Financiero x35% + Contratacion x30% + Operativo x20% + Datos x15%. Si un componente no tiene dato (s/d) se excluye y se reponderan los demás.</span>
       <span><b>&#x1F534; ALTO</b> &ge; 60 &nbsp;&middot;&nbsp; <b>&#x1F7E1; MEDIO</b> 30-59 &nbsp;&middot;&nbsp; <b>&#x1F7E2; BAJO</b> &lt; 30</span>
     </div>
   </div>
@@ -811,6 +820,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     return f.split('/')[0] || '-';
   }
 
+  // Componente sin dato → "s/d" (antes se mostraba un valor fijo como si fuera medido)
+  function sd(v) {
+    return (v === '' || v === null || v === undefined || isNaN(+v))
+      ? '<span style="color:#64748b" title="Sin dato para este organismo: no entra en el IRI">s/d</span>'
+      : (+v).toFixed(0);
+  }
+
   function renderTable() {
     const rows = filterData().sort((a,b) => b['IRI (Score)'] - a['IRI (Score)']);
     document.getElementById('table-body').innerHTML = rows.map(d => `
@@ -819,10 +835,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
         <td><b>${d.Organismo}</b></td>
         <td style="color:#94a3b8">${d.Area}</td>
         <td style="color:${iriColor(+d['IRI (Score)'])};font-weight:700;font-size:1rem">${(+d['IRI (Score)']).toFixed(1)}</td>
-        <td>${(+d['Riesgo Financiero']).toFixed(0)}</td>
-        <td>${(+d['Riesgo Contratación']).toFixed(0)}</td>
-        <td>${(+d['Riesgo Operativo']).toFixed(0)}</td>
-        <td>${(+d['Riesgo Datos']).toFixed(0)}</td>
+        <td>${sd(d['Riesgo Financiero'])}</td>
+        <td>${sd(d['Riesgo Contratación'])}</td>
+        <td>${sd(d['Riesgo Operativo'])}</td>
+        <td>${sd(d['Riesgo Datos'])}</td>
         <td title="${d.Fuente || ''}">${fuenteLabel(d.Fuente)}</td>
       </tr>`).join('');
     document.getElementById('table-count').textContent =
