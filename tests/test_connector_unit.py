@@ -225,3 +225,10 @@ class TestBuildMonitorCompleto:
         df = build_monitor_completo()
         assert df["Fuente"].notna().all()
         assert (df["Fuente"].str.strip() != "").all()
+
+def test_match_bora_nombres():
+    import connector as c
+    act = {c._norm_org("EJÉRCITO ARGENTINO"): (161, 0), c._norm_org("POLICÍA FEDERAL ARGENTINA"): (41, 10)}
+    assert c._match_bora("374 - Estado Mayor General del Ejercito", act) == (161, 0)
+    # otra repartición con nombre parecido no debe tomar los datos de la Policía
+    assert c._match_bora("403 - Superintendencia de Bienestar de la Policia Federal Argentina", act) is None

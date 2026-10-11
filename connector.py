@@ -23,6 +23,7 @@ Variables de entorno:
 """
 
 import os
+import re
 import logging
 import requests
 import pandas as pd
@@ -64,9 +65,9 @@ def _find_latest_senado_csv(base_url: str, prefix: str, days_back: int = 60) -> 
 _SENADO_CSV_NOMINA   = None
 _SENADO_CSV_PARTIDO  = None
 
-def _get_json(url: str) -> dict | list | None:
+def _get_json(url: str, timeout: int = TIMEOUT) -> dict | list | None:
     try:
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+        r = requests.get(url, headers=HEADERS, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -597,12 +598,120 @@ def _organismos_compras(registros: list, patron_directa: str, area: str, fuente:
         })
     return rows
 
+COMPRAR_2020_URL = os.getenv(
+    "COMPRAR_HIST_URL",
+    "https://infra.datos.gob.ar/catalog/jgm/dataset/4/distribution/4.20/download/adjudicaciones-2020.csv",
+)
+
+
+def _norm_org(t: str) -> str:
+    import unicodedata
+    t = re.sub(r"^\s*\d+\s*-\s*", "", _arreglar_texto(t))           # "375 - Gendarmeria" -> "Gendarmeria"
+    t = "".join(c for c in unicodedata.normalize("NFD", t.upper()) if unicodedata.category(c) != "Mn")
+    t = re.sub(r"[^A-Z ]", " ", t)
+    stop = {"NACIONAL", "ARGENTINA", "ARGENTINO", "DE", "DEL", "LA", "EL", "LOS", "LAS", "Y", "GENERAL"}
+    return " ".join(w for w in t.split() if len(w) > 2 and w not in stop)
+
+
+def _actividad_bora_2026(base_url: str) -> dict:
+    """{nombre normalizado: (adjudicaciones, directas)} con las adjudicaciones 2026
+    publicadas en el BORA que acumula monitor_contratos (/api/contratos)."""
+    filas, offset = [], 0
+    while base_url:
+        # la primera consulta puede tardar: monitor_contratos lee todos los reportes
+        data = _get_json(f"{base_url}/api/contratos?limit=1000&offset={offset}", timeout=90)
+        if not data or not isinstance(data, dict):
+            break
+        lote = data.get("data", [])
+        filas.extend(lote)
+        offset += len(lote)
+        if not lote or offset >= int(data.get("total", 0) or 0):
+            break
+    if not filas:
+        return {}
+    df = pd.DataFrame(filas)
+    if "organismo_contratante" not in df or "tipo_proceso_bora" not in df:
+        return {}
+    if "cancelada" in df:
+        df = df[~df["cancelada"].astype(str).str.lower().isin(["true", "1"])]
+    if "link_bora" in df:
+        con_link = df["link_bora"].astype(str).str.strip() != ""
+        df = pd.concat([df[con_link].drop_duplicates("link_bora"), df[~con_link]])
+    df["_org"] = df["organismo_contratante"].astype(str).str.split(" - ").str[0].map(_norm_org)
+    df["_dir"] = df["tipo_proceso_bora"].astype(str).str.lower().str.contains("directa")
+    return {o: (len(g), int(g["_dir"].sum())) for o, g in df.groupby("_org") if o}
+
+
+_GENERICAS = {"ESTADO", "MAYOR", "MINISTERIO", "SECRETARIA", "COMANDO", "SERVICIO", "REPUBLICA"}
+
+
+def _match_bora(nombre: str, actividad: dict):
+    n = set(_norm_org(nombre).split())
+    if not n:
+        return None
+    mejor, puntaje = None, 0
+    for org, val in actividad.items():
+        o = set(org.split())
+        comunes = len(n & o)
+        # todas las palabras del nombre más corto tienen que estar en el otro, y lo
+        # que sobra en el más largo solo pueden ser palabras genéricas
+        # ("ESTADO MAYOR GENERAL DEL EJERCITO" = "EJERCITO ARGENTINO", pero
+        # "SUPERINTENDENCIA DE BIENESTAR DE LA POLICIA FEDERAL" != "POLICIA FEDERAL")
+        sobra = (n | o) - (n & o)
+        if comunes and comunes == min(len(n), len(o)) and sobra <= _GENERICAS and comunes > puntaje:
+            mejor, puntaje = val, comunes
+    return mejor
+
+
+def _organismos_comprar_2020(actividad: dict, area: str = "Administración Central", n: int = 25) -> list[dict]:
+    """
+    % de contrataciones directas por organismo con las adjudicaciones de COMPR.AR 2020
+    (datos.gob.ar, siempre la misma fuente). Se cuenta cada procedimiento una vez
+    (el archivo trae una fila por proveedor/renglón).
+
+    Antes esta área dependía de lo que mandara /api/licitaciones/datos: el archivo
+    2020 solo los días en que fallaba el portal Comprar y 12 aperturas próximas el
+    resto, así que cambiaba de base día a día. En la fuente se agrega, como
+    referencia, la actividad 2026 publicada en el BORA (que subestima las directas:
+    la mayoría no se publica en el Boletín).
+    """
+    try:
+        r = requests.get(COMPRAR_2020_URL, headers=HEADERS, timeout=120)
+        r.raise_for_status()
+        df = pd.read_csv(StringIO(r.content.decode("utf-8-sig", errors="replace")), low_memory=False)
+    except Exception as e:
+        log.warning(f"  COMPR.AR 2020: no se pudo descargar ({e})")
+        return []
+    req = {"Número Procedimiento", "Descripcion SAF", "Tipo de Procedimiento"}
+    if not req.issubset(df.columns):
+        log.warning(f"  COMPR.AR 2020: columnas inesperadas {list(df.columns)[:8]}")
+        return []
+    df = df.drop_duplicates("Número Procedimiento")
+    df = df.rename(columns={"Descripcion SAF": "organismo", "Tipo de Procedimiento": "tipo"})
+    rows = _organismos_compras(df.to_dict("records"), r"DIRECT", area, "COMPR.AR", n=n)
+    for row in rows:
+        row["Fuente"] = row["Fuente"].replace("COMPR.AR (COMPR.AR", "COMPR.AR").replace(" procesos)", " procedimientos")
+        m = _match_bora(row["Organismo"], actividad)
+        row["Fuente"] += (f" · BORA 2026: {m[0]} adjudicaciones ({m[1]} directas)" if m
+                          else " · BORA 2026: sin adjudicaciones publicadas")
+        row["Fuente"] = "monitor_contratos · " + row["Fuente"]
+    return rows
+
+
 def build_contratos_ar_df() -> pd.DataFrame:
-    log.info("Cargando contratos Argentina (monitor_contratos_v2)...")
+    log.info("Cargando contratos Argentina (monitor_contratos)...")
 
     if not CONTRATOS_AR_API:
         log.warning("  CONTRATOS_AR_API_URL no definida — se omite del dataset (sin fallback sintético)")
         return _empty_monitor_df()
+
+    rows_hist = _organismos_comprar_2020(_actividad_bora_2026(CONTRATOS_AR_API))
+    if rows_hist:
+        df = pd.DataFrame(rows_hist)
+        df["Estado"] = df["IRI (Score)"].apply(_score_estado)
+        log.info(f"  ✅ contratos AR: {len(df)} organismos (COMPR.AR 2020 + actividad BORA 2026)")
+        return df
+    log.warning("  contratos AR: COMPR.AR 2020 no disponible — se usa /api/licitaciones/datos")
 
     data = _get_json(f"{CONTRATOS_AR_API}/api/licitaciones/datos")
     if not data or data.get("sin_datos"):
