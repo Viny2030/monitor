@@ -61,6 +61,10 @@ def generar_datos_reales():
     # ── Guardar CSV ───────────────────────────────────────────────────────────
     os.makedirs(OUT_DIR, exist_ok=True)
     df.to_csv(OUT_FILE, index=False, encoding="utf-8-sig")
+    import json
+    from datetime import datetime
+    with open(os.path.join(OUT_DIR, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump({"generado": datetime.now().isoformat(timespec="seconds")}, f)
 
     # ── Resumen ───────────────────────────────────────────────────────────────
     log.info("")

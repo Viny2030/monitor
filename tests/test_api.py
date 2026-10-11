@@ -374,3 +374,19 @@ class TestDashboard:
     def test_contiene_iri(self, client):
         r = client.get("/dashboard")
         assert "IRI" in r.text
+
+
+def test_refresh_sin_token_configurado(csv_path, monkeypatch):
+    """Sin REFRESH_TOKEN (o con el viejo "dev") refresh y reset-db quedan deshabilitados."""
+    import main as app_module
+    monkeypatch.setattr(app_module, "CSV_PATH", csv_path)
+    from main import app
+    with TestClient(app) as c:
+        for valor in ("", "dev"):
+            monkeypatch.setattr(app_module, "REFRESH_TOKEN", valor)
+            assert c.post("/refresh", headers={"X-Refresh-Token": "dev"}).status_code == 503
+            assert c.post("/reset-db", headers={"X-Refresh-Token": "dev"}).status_code == 503
+
+
+def test_info_trae_fecha_de_datos(client):
+    assert "datos_actualizados" in client.get("/info").json()

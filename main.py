@@ -92,7 +92,7 @@ def _load_from_db() -> pd.DataFrame | None:
                    riesgo_operativo AS "Riesgo Operativo",
                    riesgo_datos AS "Riesgo Datos",
                    iri_score AS "IRI (Score)",
-                   estado AS "Estado", fuente AS "Fuente"
+                   estado AS "Estado", fuente AS "Fuente", updated_at
             FROM monitor_iri
             WHERE fecha_datos = (SELECT MAX(fecha_datos) FROM monitor_iri)
             ORDER BY iri_score DESC
@@ -100,7 +100,14 @@ def _load_from_db() -> pd.DataFrame | None:
         conn.close()
         if len(df) > 0:
             print(f"✅ DB: {len(df)} registros cargados desde monitor_iri")
-            return df
+            try:
+                import json
+                os.makedirs(os.path.dirname(META_PATH), exist_ok=True)
+                with open(META_PATH, "w", encoding="utf-8") as f:
+                    json.dump({"generado": str(df["updated_at"].max())[:19].replace(" ", "T")}, f)
+            except Exception:
+                pass
+            return df.drop(columns=["updated_at"])
     except Exception as e:
         print(f"⚠️  DB load error: {e}")
     return None
@@ -155,7 +162,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-REFRESH_TOKEN = os.getenv("REFRESH_TOKEN", "dev")
+# Sin valor por defecto: antes era "dev" (y el manual lo publicaba), así que si
+# la variable no estaba en Railway cualquiera podía borrar la base con /reset-db.
+REFRESH_TOKEN = os.getenv("REFRESH_TOKEN", "")
+META_PATH = "data/processed/meta.json"
+
+
+def _verificar_token(recibido):
+    import hmac
+    if not REFRESH_TOKEN or REFRESH_TOKEN == "dev":
+        raise HTTPException(status_code=503, detail="Deshabilitado: falta configurar REFRESH_TOKEN")
+    if not recibido or not hmac.compare_digest(str(recibido), REFRESH_TOKEN):
+        raise HTTPException(status_code=401, detail="Token invalido")
+
+
+def _fecha_datos():
+    """Fecha y hora en que se generó el dataset que se está mostrando."""
+    import json
+    try:
+        with open(META_PATH, encoding="utf-8") as f:
+            return json.load(f).get("generado")
+    except Exception:
+        pass
+    try:
+        from datetime import datetime
+        return datetime.fromtimestamp(os.path.getmtime(CSV_PATH)).isoformat(timespec="seconds")
+    except Exception:
+        return None
 
 def _load_df() -> pd.DataFrame:
     if not os.path.exists(CSV_PATH):
@@ -194,6 +227,7 @@ def info():
         "version": "2.0",
         "dataset_disponible": existe,
         "total_organismos": n,
+        "datos_actualizados": _fecha_datos(),
         "repos_conectados": [
             "github.com/Viny2030/justicia",
             "github.com/Viny2030/monitor_legistativo",
@@ -258,6 +292,7 @@ def get_resumen():
         "medio_riesgo": int(df["Estado"].astype(str).str.contains("MEDIO").sum()),
         "dato_parcial": int(df["Estado"].astype(str).str.contains("parcial").sum()),
         "bajo_riesgo":  int((df["Estado"] == "\U0001f7e2 BAJO").sum()),
+        "datos_actualizados": _fecha_datos(),
     }
     por_area = (
         df.groupby("Area")
@@ -273,8 +308,7 @@ def get_resumen():
 @app.post("/reset-db")
 def reset_db(x_refresh_token: str = Header(None)):
     """Limpia la DB y el CSV cacheado para forzar regeneración limpia."""
-    if x_refresh_token != REFRESH_TOKEN:
-        raise HTTPException(status_code=401, detail="Token invalido")
+    _verificar_token(x_refresh_token)
     resultados = []
     # 1. Limpiar CSV en disco
     if os.path.exists(CSV_PATH):
@@ -301,8 +335,7 @@ def reset_db(x_refresh_token: str = Header(None)):
 
 @app.post("/refresh")
 def refresh(x_refresh_token: str = Header(None)):
-    if x_refresh_token != REFRESH_TOKEN:
-        raise HTTPException(status_code=401, detail="Token invalido")
+    _verificar_token(x_refresh_token)
     import subprocess, sys
     LOG_PATH = "data/processed/refresh.log"
     os.makedirs("data/processed", exist_ok=True)
@@ -600,7 +633,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>SENADORES_API_URL</td><td>URL del servicio senadores en Railway</td></tr>
     <tr><td>CONTRATOS_AR_API_URL</td><td>URL de monitor_contratos_v2 en Railway</td></tr>
     <tr><td>TGN_AR_API_URL</td><td>URL de gob_bo_comprar_tgn en Railway</td></tr>
-    <tr><td>REFRESH_TOKEN</td><td>Token para <code>POST /refresh</code> (default: <code>dev</code>)</td></tr>
+    <tr><td>REFRESH_TOKEN</td><td>Token para <code>POST /refresh</code> y <code>/reset-db</code> (obligatorio: sin él quedan deshabilitados)</td></tr>
   </table>
 
   <h2>&#x1F4CB; Endpoints de la API</h2>
@@ -762,7 +795,11 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 
       document.getElementById('loader').style.display = 'none';
       document.getElementById('app').style.display    = 'block';
-      document.getElementById('status').textContent   = 'Actualizado ' + new Date().toLocaleTimeString();
+      // Fecha de los DATOS (no la hora en que se abrió la página)
+      const fd = resData.global && resData.global.datos_actualizados;
+      document.getElementById('status').textContent = fd
+        ? 'Datos del ' + new Date(fd).toLocaleString('es-AR', {dateStyle: 'short', timeStyle: 'short'})
+        : 'Fecha de los datos no disponible';
     } catch(e) {
       document.getElementById('loader').textContent = 'Error al cargar: ' + e.message;
       document.getElementById('status').textContent = '';

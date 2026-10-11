@@ -9,7 +9,17 @@ jobs:
   refresh:
     name: Regenerar Dataset
     runs-on: ubuntu-latest
+    permissions:
+      actions: write
     steps:
+      # GitHub desactiva los workflows programados de un repo sin commits en 60
+      # días (por eso los "keepalive" manuales). Re-habilitar este workflow por
+      # API reinicia ese contador sin tener que commitear nada.
+      - name: Mantener activo el cron
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/refresh_diario.yml/enable" || true
+
       - name: Llamar POST /refresh
         run: |
           RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
@@ -57,4 +67,3 @@ jobs:
               \"subject\": \"❌ Refresh FALLÓ - Monitor IRI ${{ steps.fecha.outputs.fecha }}\",
               \"text\": \"El refresh diario falló.\nVer logs: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
             }"
-        # keepalive: 2026-08-29
