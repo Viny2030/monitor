@@ -173,7 +173,15 @@ def build_judicial_df() -> pd.DataFrame:
     vacantes_lista    = _fetch_justicia_vacantes_lista()
 
     tasa_vacancia_global = 32.9
-    if vacantes_lista and isinstance(vacantes_lista, list) and len(vacantes_lista) > 0:
+    # magistrados.json ya trae los cargos vacantes (campo "vacante"=True): la
+    # tasa es vacantes / cargos. Antes se sumaban otra vez las vacantes al
+    # total (383/1385 = 27,7% en lugar de 383/1002 = 38,2%).
+    con_flag = bool(magistrados) and isinstance(magistrados, list) and "vacante" in magistrados[0]
+    if con_flag:
+        total_vac = sum(1 for m in magistrados if m.get("vacante") in (True, "True", "true", 1))
+        tasa_vacancia_global = round(total_vac / len(magistrados) * 100, 1)
+        log.info(f"  Tasa vacancia (campo vacante): {tasa_vacancia_global}% ({total_vac}/{len(magistrados)})")
+    elif vacantes_lista and isinstance(vacantes_lista, list) and len(vacantes_lista) > 0:
         total_vacantes = len(vacantes_lista)
         if magistrados and isinstance(magistrados, list):
             total_cargos = len(magistrados)
@@ -216,8 +224,12 @@ def build_judicial_df() -> pd.DataFrame:
                     camara_clean = camara
 
                 total_en_camara   = len(grp)
-                vacantes_camara   = vacantes_por_camara.get(camara_clean, 0)
-                total_con_vacantes = total_en_camara + vacantes_camara
+                if "vacante" in grp.columns:
+                    vacantes_camara    = int(grp["vacante"].astype(str).str.lower().isin(["true", "1"]).sum())
+                    total_con_vacantes = total_en_camara      # las vacantes ya están en grp
+                else:
+                    vacantes_camara    = vacantes_por_camara.get(camara_clean, 0)
+                    total_con_vacantes = total_en_camara + vacantes_camara
                 tasa_vac_camara   = round(
                     vacantes_camara / total_con_vacantes * 100, 1
                 ) if total_con_vacantes > 0 else tasa_vacancia_global
