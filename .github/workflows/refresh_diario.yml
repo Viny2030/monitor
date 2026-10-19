@@ -22,9 +22,9 @@ jobs:
 
       - name: Llamar POST /refresh
         run: |
-          RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
+          RESPONSE=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST \
             -H "X-Refresh-Token: ${{ secrets.REFRESH_TOKEN }}" \
-            https://monitor-production-f053.up.railway.app/refresh)
+            https://monitor.ecosistematransparencia.com.ar/refresh)
           echo "HTTP Status: $RESPONSE"
           if [ "$RESPONSE" != "200" ]; then
             echo "❌ Refresh fallido con status $RESPONSE"
@@ -52,7 +52,7 @@ jobs:
               \"from\": \"Monitor IRI <onboarding@resend.dev>\",
               \"to\": \"viny01958@gmail.com\",
               \"subject\": \"✅ Refresh OK - Monitor IRI ${{ steps.fecha.outputs.fecha }}\",
-              \"text\": \"El dataset fue regenerado correctamente.\nVer: https://monitor-production-f053.up.railway.app/dashboard\"
+              \"text\": \"El dataset fue regenerado correctamente.\nVer: https://monitor.ecosistematransparencia.com.ar/dashboard\"
             }"
 
       - name: Notificar fallo
