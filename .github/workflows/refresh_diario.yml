@@ -19,7 +19,10 @@ jobs:
       # API reinicia ese contador sin tener que commitear nada.
       - name: Mantener activo el cron
         env:
-        # La URL sale del secret REFRESH_URL: debe ser el dominio de Railway
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/refresh_diario.yml/enable" || true
+
+      # La URL sale del secret REFRESH_URL: debe ser el dominio de Railway
       # (*.up.railway.app). Por el dominio público, Cloudflare bloquea con 403
       # las llamadas desde GitHub Actions (pasó el 20/10/2026) y además corta a
       # los 100 s. Sin el secret se usa el dominio público.
