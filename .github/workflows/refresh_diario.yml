@@ -2,7 +2,9 @@ name: Refresh Diario Monitor IRI
 
 on:
   schedule:
-    - cron: '0 10 * * *'
+    # Minuto 17 y no 0: GitHub descarta corridas programadas en horas en punto
+    # cuando hay mucha carga (no hubo corrida el 19 ni el 20/10/2026).
+    - cron: '17 10 * * *'
   workflow_dispatch:
 
 jobs:
@@ -17,20 +19,64 @@ jobs:
       # API reinicia ese contador sin tener que commitear nada.
       - name: Mantener activo el cron
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/refresh_diario.yml/enable" || true
-
-      - name: Llamar POST /refresh
+        # La URL sale del secret REFRESH_URL: debe ser el dominio de Railway
+      # (*.up.railway.app). Por el dominio público, Cloudflare bloquea con 403
+      # las llamadas desde GitHub Actions (pasó el 20/10/2026) y además corta a
+      # los 100 s. Sin el secret se usa el dominio público.
+      # El refresh se pide en modo async (202) y se sigue en /refresh/estado.
+      - name: Regenerar dataset (POST /refresh + seguimiento)
+        env:
+          REFRESH_URL: ${{ secrets.REFRESH_URL }}
+          TOKEN: ${{ secrets.REFRESH_TOKEN }}
         run: |
-          RESPONSE=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST \
-            -H "X-Refresh-Token: ${{ secrets.REFRESH_TOKEN }}" \
-            https://monitor.ecosistematransparencia.com.ar/refresh)
-          echo "HTTP Status: $RESPONSE"
-          if [ "$RESPONSE" != "200" ]; then
-            echo "❌ Refresh fallido con status $RESPONSE"
-            exit 1
+          BASE="${REFRESH_URL:-https://monitor.ecosistematransparencia.com.ar}"
+          BASE="${BASE%/}"
+          UA="MonitorIRI-refresh/1.0 (GitHub Actions; github.com/${{ github.repository }})"
+          echo "Destino: $BASE"
+
+          # 1) Pedir el refresh (3 intentos ante errores de red o 5xx)
+          for intento in 1 2 3; do
+            CODE=$(curl -s -o resp.json -w "%{http_code}" --max-time 330 -X POST \
+              -A "$UA" -H "X-Refresh-Token: $TOKEN" "$BASE/refresh?modo=async")
+            echo "Intento $intento: HTTP $CODE"
+            case "$CODE" in
+              202|409) break ;;                       # aceptado o ya en curso → seguir
+              200)                                      # servidor sin modo async (versión anterior)
+                if [ "$(jq -r .status resp.json 2>/dev/null)" = "ok" ]; then
+                  echo "✅ Refresh exitoso (modo sincrónico)"; exit 0
+                fi
+                echo "❌ El motor falló:"; head -c 1500 resp.json; echo; exit 1 ;;
+              401|403|404|503)
+                echo "❌ Error no reintentable. Respuesta:"; head -c 600 resp.json; echo
+                [ "$CODE" = "403" ] && echo "::error::403: probablemente Cloudflare. Configurar el secret REFRESH_URL con el dominio de Railway."
+                exit 1 ;;
+            esac
+            [ "$intento" -lt 3 ] && sleep $((intento * 30))
+          done
+          if [ "$CODE" != "202" ] && [ "$CODE" != "409" ]; then
+            echo "❌ No se pudo iniciar el refresh. Última respuesta:"; head -c 600 resp.json; echo; exit 1
           fi
-          echo "✅ Refresh exitoso"
+
+          # 2) Seguir el estado hasta que termine (máx. ~8 min)
+          for i in $(seq 1 32); do
+            sleep 15
+            CODE=$(curl -s -o estado.json -w "%{http_code}" --max-time 30 \
+              -A "$UA" -H "X-Refresh-Token: $TOKEN" "$BASE/refresh/estado")
+            ESTADO=$(jq -r .estado estado.json 2>/dev/null)
+            echo "[$((i * 15))s] HTTP $CODE estado=$ESTADO"
+            case "$ESTADO" in
+              ok)
+                echo "✅ Refresh exitoso: $(jq -r '.resultado.organismos' estado.json) organismos, datos del $(jq -r .datos_actualizados estado.json)"
+                exit 0 ;;
+              error)
+                echo "❌ El motor falló: $(jq -r '.resultado.detalle' estado.json)"
+                jq -r '.resultado.stderr' estado.json | tail -40
+                exit 1 ;;
+              sin_ejecutar)
+                echo "❌ El servidor se reinició durante el refresh"; exit 1 ;;
+            esac
+          done
+          echo "❌ El refresh no terminó en 8 minutos"; exit 1
 
   notificar:
     name: Notificaciones

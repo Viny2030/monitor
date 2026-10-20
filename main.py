@@ -333,12 +333,26 @@ def reset_db(x_refresh_token: str = Header(None)):
     return {"status": "ok", "acciones": resultados}
 
 
-@app.post("/refresh")
-def refresh(x_refresh_token: str = Header(None)):
-    _verificar_token(x_refresh_token)
-    import subprocess, sys
+import threading as _threading
+from datetime import datetime as _datetime
+
+_REFRESH_LOCK = _threading.Lock()
+_REFRESH_ESTADO: dict = {"estado": "sin_ejecutar"}
+
+
+def _ejecutar_motor() -> dict:
+    """Corre motor_analitico.py y devuelve el resultado.
+
+    Si el motor falla o genera un dataset vacío, se restaura el CSV anterior:
+    antes el CSV quedaba como lo dejara el motor y /refresh respondía 200 con
+    "status": "error", así que el workflow daba por bueno un refresh roto.
+    """
+    import shutil, subprocess, sys
     LOG_PATH = "data/processed/refresh.log"
     os.makedirs("data/processed", exist_ok=True)
+    backup = CSV_PATH + ".anterior"
+    if os.path.exists(CSV_PATH):
+        shutil.copy2(CSV_PATH, backup)
     # Heredar el entorno completo — asegura que TGN_AR_API_URL y CONTRATOS_AR_API_URL
     # lleguen al subprocess (en Railway los subprocesos no siempre heredan env vars)
     env = os.environ.copy()
@@ -351,18 +365,71 @@ def refresh(x_refresh_token: str = Header(None)):
                 env=env,
             )
         log_content = open(LOG_PATH, encoding="utf-8", errors="replace").read()
-        if result.returncode == 0 and os.path.exists(CSV_PATH):
-            df_new = pd.read_csv(CSV_PATH)
-            _save_to_db(df_new)
-        return {
-            "status": "ok" if result.returncode == 0 else "error",
-            "stdout": "",
-            "stderr": log_content[-4000:],
-        }
+        try:
+            filas = len(pd.read_csv(CSV_PATH)) if os.path.exists(CSV_PATH) else 0
+        except pd.errors.EmptyDataError:   # CSV sin columnas = dataset vacío
+            filas = 0
+        if result.returncode == 0 and filas > 0:
+            _save_to_db(pd.read_csv(CSV_PATH))
+            return {"status": "ok", "organismos": filas, "stdout": "", "stderr": log_content[-4000:]}
+        motivo = (f"motor terminó con código {result.returncode}" if result.returncode != 0
+                  else "el motor generó un dataset vacío")
     except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Motor timeout (>5min)")
+        motivo, log_content = "Motor timeout (>5min)", ""
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        motivo, log_content = str(e), ""
+    if os.path.exists(backup):
+        shutil.copy2(backup, CSV_PATH)
+        motivo += " — se mantiene el dataset anterior"
+    return {"status": "error", "detalle": motivo, "stdout": "", "stderr": log_content[-4000:]}
+
+
+def _correr_en_segundo_plano():
+    try:
+        resultado = _ejecutar_motor()
+    except Exception as e:  # no debería pasar: _ejecutar_motor captura todo
+        resultado = {"status": "error", "detalle": str(e)}
+    _REFRESH_ESTADO.update(estado=resultado["status"], fin=_datetime.now().isoformat(timespec="seconds"),
+                           resultado=resultado)
+    _REFRESH_LOCK.release()
+
+
+@app.post("/refresh")
+def refresh(x_refresh_token: str = Header(None), modo: str = "sync"):
+    """Regenera el dataset.
+
+    modo=sync (default): espera al motor y responde 200 si salió bien o 500 si
+    falló. modo=async: responde 202 enseguida y el resultado se consulta en
+    GET /refresh/estado. El workflow diario usa async porque Cloudflare corta
+    las respuestas que tardan más de 100 s (error 524) y el motor puede tardar
+    hasta 5 min.
+    """
+    _verificar_token(x_refresh_token)
+    if not _REFRESH_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="Ya hay un refresh en curso: consultar GET /refresh/estado")
+    _REFRESH_ESTADO.clear()
+    _REFRESH_ESTADO.update(estado="corriendo", inicio=_datetime.now().isoformat(timespec="seconds"))
+    if modo == "async":
+        _threading.Thread(target=_correr_en_segundo_plano, daemon=True).start()
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=202, content={"status": "corriendo", "consultar": "GET /refresh/estado"})
+    try:
+        resultado = _ejecutar_motor()
+        _REFRESH_ESTADO.update(estado=resultado["status"], fin=_datetime.now().isoformat(timespec="seconds"),
+                               resultado=resultado)
+    finally:
+        _REFRESH_LOCK.release()
+    if resultado["status"] != "ok":
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=500, content=resultado)
+    return resultado
+
+
+@app.get("/refresh/estado")
+def refresh_estado(x_refresh_token: str = Header(None)):
+    """Estado del último refresh: sin_ejecutar | corriendo | ok | error."""
+    _verificar_token(x_refresh_token)
+    return {**_REFRESH_ESTADO, "datos_actualizados": _fecha_datos()}
 
 
 # ── DASHBOARD HTML ────────────────────────────────────────────────────────────
