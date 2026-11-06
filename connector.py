@@ -598,10 +598,15 @@ def _organismos_compras(registros: list, patron_directa: str, area: str, fuente:
         })
     return rows
 
-COMPRAR_2020_URL = os.getenv(
+COMPRAR_HIST_URL = os.getenv(
     "COMPRAR_HIST_URL",
-    "https://infra.datos.gob.ar/catalog/jgm/dataset/4/distribution/4.20/download/adjudicaciones-2020.csv",
+    "https://infra.datos.gob.ar/catalog/jgm/dataset/4/distribution/4.22/download/Adjudicaciones.csv",
 )
+# Ejercicios que se toman del archivo (los N más recientes) y mínimo de
+# procedimientos para calcular el % de directas: con pocos procedimientos el
+# porcentaje no es confiable (1 de 2 = 50 %).
+COMPRAR_EJERCICIOS = int(os.getenv("COMPRAR_EJERCICIOS", "2"))
+COMPRAR_MIN_PROC = int(os.getenv("COMPRAR_MIN_PROC", "20"))
 
 
 def _norm_org(t: str) -> str:
@@ -613,9 +618,21 @@ def _norm_org(t: str) -> str:
     return " ".join(w for w in t.split() if len(w) > 2 and w not in stop)
 
 
+# Lo que el BORA agrega después del nombre del organismo en la sección tercera
+# ("SERVICIO PENITENCIARIO FEDERAL Solicitudes de Provisión").
+_SUFIJOS_BORA = re.compile(
+    r"\s+(Solicitud(es)?\s+de\s+Provisi|Listado\s+[ÓO]rdenes|Contrataciones\s+(Directas|Varias)|"
+    r"Licitaciones\s+P[úu]blicas).*$", re.IGNORECASE)
+
+# Organismos que en COMPR.AR figuran con el nombre de su servicio administrativo
+# (código SAF) y no con el nombre que usa el BORA.
+_ALIAS_SAF = {"POLICIA FEDERAL": "326", "SERVICIO PENITENCIARIO FEDERAL": "331"}
+
+
 def _actividad_bora_2026(base_url: str) -> dict:
-    """{nombre normalizado: (adjudicaciones, directas)} con las adjudicaciones 2026
-    publicadas en el BORA que acumula monitor_contratos (/api/contratos)."""
+    """{nombre normalizado: {"nombre", "avisos", "licitaciones", "directas"}} con
+    las adjudicaciones 2026 publicadas en el BORA que acumula monitor_contratos
+    (/api/contratos)."""
     filas, offset = [], 0
     while base_url:
         # la primera consulta puede tardar: monitor_contratos lee todos los reportes
@@ -637,9 +654,16 @@ def _actividad_bora_2026(base_url: str) -> dict:
     if "link_bora" in df:
         con_link = df["link_bora"].astype(str).str.strip() != ""
         df = pd.concat([df[con_link].drop_duplicates("link_bora"), df[~con_link]])
-    df["_org"] = df["organismo_contratante"].astype(str).str.split(" - ").str[0].map(_norm_org)
-    df["_dir"] = df["tipo_proceso_bora"].astype(str).str.lower().str.contains("directa")
-    return {o: (len(g), int(g["_dir"].sum())) for o, g in df.groupby("_org") if o}
+    df["_nombre"] = (df["organismo_contratante"].astype(str).str.split(" - ").str[0]
+                     .str.replace(_SUFIJOS_BORA, "", regex=True).str.strip())
+    df = df[~df["_nombre"].str.upper().isin(["", "NAN", "NOTA ACLARATORIA"])]
+    df["_org"] = df["_nombre"].map(_norm_org)
+    tipo = df["tipo_proceso_bora"].astype(str).str.lower()
+    df["_dir"] = tipo.str.contains("directa")
+    df["_lic"] = tipo.str.contains("licitaci|concurso")
+    return {o: {"nombre": g["_nombre"].value_counts().index[0], "avisos": len(g),
+                "licitaciones": int(g["_lic"].sum()), "directas": int(g["_dir"].sum())}
+            for o, g in df.groupby("_org") if o}
 
 
 _GENERICAS = {"ESTADO", "MAYOR", "MINISTERIO", "SECRETARIA", "COMANDO", "SERVICIO", "REPUBLICA"}
@@ -663,38 +687,116 @@ def _match_bora(nombre: str, actividad: dict):
     return mejor
 
 
-def _organismos_comprar_2020(actividad: dict, area: str = "Administración Central", n: int = 25) -> list[dict]:
-    """
-    % de contrataciones directas por organismo con las adjudicaciones de COMPR.AR 2020
-    (datos.gob.ar, siempre la misma fuente). Se cuenta cada procedimiento una vez
-    (el archivo trae una fila por proveedor/renglón).
-
-    Antes esta área dependía de lo que mandara /api/licitaciones/datos: el archivo
-    2020 solo los días en que fallaba el portal Comprar y 12 aperturas próximas el
-    resto, así que cambiaba de base día a día. En la fuente se agrega, como
-    referencia, la actividad 2026 publicada en el BORA (que subestima las directas:
-    la mayoría no se publica en el Boletín).
-    """
+def _leer_comprar_hist() -> pd.DataFrame | None:
+    """Adjudicaciones COMPR.AR (datos.gob.ar), una fila por procedimiento y
+    proveedor. Acepta el archivo 2016-2026 (columnas con guion bajo) y los
+    anuales anteriores (columnas con espacios)."""
     try:
-        r = requests.get(COMPRAR_2020_URL, headers=HEADERS, timeout=120)
+        r = requests.get(COMPRAR_HIST_URL, headers=HEADERS, timeout=300)
         r.raise_for_status()
-        df = pd.read_csv(StringIO(r.content.decode("utf-8-sig", errors="replace")), low_memory=False)
+        df = pd.read_csv(StringIO(r.content.decode("utf-8-sig", errors="replace")),
+                         low_memory=False, dtype=str)
     except Exception as e:
-        log.warning(f"  COMPR.AR 2020: no se pudo descargar ({e})")
-        return []
-    req = {"Número Procedimiento", "Descripcion SAF", "Tipo de Procedimiento"}
+        log.warning(f"  COMPR.AR: no se pudo descargar ({e})")
+        return None
+    df.columns = [c.strip().replace(" ", "_") for c in df.columns]
+    df = df.rename(columns={"Número_Procedimiento": "Numero_Proceso"})
+    req = {"Numero_Proceso", "Descripcion_SAF", "Tipo_de_Procedimiento", "Ejercicio"}
     if not req.issubset(df.columns):
-        log.warning(f"  COMPR.AR 2020: columnas inesperadas {list(df.columns)[:8]}")
+        log.warning(f"  COMPR.AR: columnas inesperadas {list(df.columns)[:8]}")
+        return None
+    df["Ejercicio"] = pd.to_numeric(df["Ejercicio"], errors="coerce")
+    return df
+
+
+def _concentracion_proveedor(filas: pd.DataFrame) -> float | None:
+    """% del monto adjudicado en pesos que se lleva el principal proveedor."""
+    if "CUIT" not in filas or "Monto" not in filas:
+        return None
+    f = filas
+    if "Moneda" in f:
+        f = f[f["Moneda"].astype(str).str.contains("peso", case=False, na=False)]
+    monto = pd.to_numeric(f["Monto"], errors="coerce")
+    por_prov = monto.groupby(f["CUIT"]).sum()
+    total = por_prov.sum()
+    return round(por_prov.max() / total * 100, 1) if total > 0 else None
+
+
+def _organismos_comprar(actividad: dict, area: str = "Administración Central") -> list[dict]:
+    """
+    Riesgo de contratación por organismo, en dos capas:
+
+    1. Organismos que compran por COMPR.AR: % de contrataciones directas sobre el
+       total de sus procedimientos adjudicados en los últimos ejercicios del
+       archivo de datos.gob.ar (numerador y denominador de la misma fuente
+       completa). Solo con COMPRAR_MIN_PROC procedimientos o más. En la fuente
+       se informa también la concentración en el principal proveedor y la
+       actividad 2026 publicada en el BORA.
+    2. Organismos que publican licitaciones en el BORA pero no aparecen en
+       COMPR.AR: compran fuera del sistema y sus directas no se ven en ningún
+       lado. Se listan "sin dato de directas", sin inventar un porcentaje (un
+       0 % sería engañoso), con la cantidad de licitaciones del BORA.
+
+    El BORA no sirve para el % de directas: las licitaciones se publican casi
+    todas, pero la mayoría de las directas solo figura en COMPR.AR. Tampoco
+    para la concentración: dos de cada tres avisos no traen el adjudicatario.
+    """
+    df = _leer_comprar_hist()
+    if df is None or df.empty:
         return []
-    df = df.drop_duplicates("Número Procedimiento")
-    df = df.rename(columns={"Descripcion SAF": "organismo", "Tipo de Procedimiento": "tipo"})
-    rows = _organismos_compras(df.to_dict("records"), r"DIRECT", area, "COMPR.AR", n=n)
-    for row in rows:
-        row["Fuente"] = row["Fuente"].replace("COMPR.AR (COMPR.AR", "COMPR.AR").replace(" procesos)", " procedimientos")
-        m = _match_bora(row["Organismo"], actividad)
-        row["Fuente"] += (f" · BORA 2026: {m[0]} adjudicaciones ({m[1]} directas)" if m
-                          else " · BORA 2026: sin adjudicaciones publicadas")
-        row["Fuente"] = "monitor_contratos · " + row["Fuente"]
+    ejercicios = sorted(df["Ejercicio"].dropna().unique())[-COMPRAR_EJERCICIOS:]
+    df = df[df["Ejercicio"].isin(ejercicios)].copy()
+    df["_org"] = df["Descripcion_SAF"].map(_arreglar_texto).str.strip()
+    df["_saf"] = df["_org"].str.extract(r"^(\d+)\s*-", expand=False).fillna(df["_org"])
+    nombres = df.groupby("_saf")["_org"].agg(lambda x: x.value_counts().index[0])
+    procs = df.drop_duplicates("Numero_Proceso").copy()
+    procs["_directa"] = (procs["Tipo_de_Procedimiento"].map(_arreglar_texto)
+                         .str.upper().str.contains("DIRECT", na=False))
+    periodo = f"{int(ejercicios[0])}" + (f"-{int(ejercicios[-1])}" if len(ejercicios) > 1 else "")
+
+    # Organismos del BORA que tienen SAF en COMPR.AR (con cualquier cantidad de procedimientos)
+    saf_por_nombre = {_norm_org(nombres[k]): k for k in nombres.index}
+    bora_saf, en_comprar = {}, set()
+    for org, act in actividad.items():
+        k = _ALIAS_SAF.get(org) or _match_bora(act["nombre"], saf_por_nombre)
+        if k in nombres.index:
+            bora_saf.setdefault(k, []).append(act)
+            en_comprar.add(org)
+
+    rows = []
+    for saf, grp in procs.groupby("_saf"):
+        if len(grp) < COMPRAR_MIN_PROC:
+            continue
+        r_con = round(grp["_directa"].mean() * 100, 1)
+        conc = _concentracion_proveedor(df[df["_saf"] == saf])
+        fuente = (f"monitor_contratos · COMPR.AR {periodo}: {len(grp)} procedimientos, "
+                  f"{int(grp['_directa'].sum())} directas")
+        if conc is not None:
+            fuente += f" · principal proveedor: {conc} % del monto"
+        acts = bora_saf.get(saf, [])
+        fuente += (f" · BORA 2026: {sum(a['avisos'] for a in acts)} adjudicaciones "
+                   f"({sum(a['directas'] for a in acts)} directas)" if acts
+                   else " · BORA 2026: sin adjudicaciones publicadas")
+        rows.append({
+            "Organismo": nombres[saf][:80], "Area": area,
+            "Riesgo Financiero": None, "Riesgo Contratación": r_con,
+            "Riesgo Operativo": None, "Riesgo Datos": None,
+            "IRI (Score)": _iri(None, r_con, None, None),
+            "Fuente": fuente,
+        })
+
+    # Control cruzado: licitan en el BORA y no figuran en COMPR.AR
+    for org, act in sorted(actividad.items(), key=lambda kv: -kv[1]["licitaciones"]):
+        if org in en_comprar or act["licitaciones"] == 0:
+            continue
+        rows.append({
+            "Organismo": act["nombre"][:80], "Area": area,
+            "Riesgo Financiero": None, "Riesgo Contratación": None,
+            "Riesgo Operativo": None, "Riesgo Datos": None,
+            "IRI (Score)": None,
+            "Fuente": (f"monitor_contratos · BORA 2026: {act['licitaciones']} licitaciones · "
+                       f"sin dato de directas: compra fuera de COMPR.AR"),
+        })
     return rows
 
 
@@ -705,13 +807,15 @@ def build_contratos_ar_df() -> pd.DataFrame:
         log.warning("  CONTRATOS_AR_API_URL no definida — se omite del dataset (sin fallback sintético)")
         return _empty_monitor_df()
 
-    rows_hist = _organismos_comprar_2020(_actividad_bora_2026(CONTRATOS_AR_API))
+    rows_hist = _organismos_comprar(_actividad_bora_2026(CONTRATOS_AR_API))
     if rows_hist:
         df = pd.DataFrame(rows_hist)
         df["Estado"] = df["IRI (Score)"].apply(_score_estado)
-        log.info(f"  ✅ contratos AR: {len(df)} organismos (COMPR.AR 2020 + actividad BORA 2026)")
+        con_dato = int(df["Riesgo Contratación"].notna().sum())
+        log.info(f"  ✅ contratos AR: {con_dato} organismos con % de directas (COMPR.AR) "
+                 f"+ {len(df) - con_dato} que compran fuera de COMPR.AR (BORA 2026)")
         return df
-    log.warning("  contratos AR: COMPR.AR 2020 no disponible — se usa /api/licitaciones/datos")
+    log.warning("  contratos AR: COMPR.AR no disponible — se usa /api/licitaciones/datos")
 
     data = _get_json(f"{CONTRATOS_AR_API}/api/licitaciones/datos")
     if not data or data.get("sin_datos"):
