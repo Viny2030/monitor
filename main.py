@@ -472,6 +472,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     .badge-red   { background: #450a0a; color: #f87171; }
     .badge-amber { background: #451a03; color: #fbbf24; }
     .badge-green { background: #052e16; color: #4ade80; }
+    .badge-gray  { background: #1e293b; color: #94a3b8; }
     #table-wrap { background: #0f172a; border: 1px solid #334155; border-radius: 10px; overflow: auto; max-height: 440px; }
     .row-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
     @media (max-width: 700px) { .row-charts { grid-template-columns: 1fr; } }
@@ -897,8 +898,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   function badgeClass(estado) {
     if ((estado || '').includes('ALTO'))  return 'badge badge-red';
     if ((estado || '').includes('MEDIO')) return 'badge badge-amber';
+    if ((estado || '').includes('SIN DATOS')) return 'badge badge-gray';
     return 'badge badge-green';
   }
+
+  // IRI vacío (ningún componente medido, p. ej. compra fuera de COMPR.AR) → -1
+  // para ordenarlo al final; nunca se muestra ni se grafica como 0.
+  const iriNum = d => (d['IRI (Score)'] === '' || d['IRI (Score)'] == null || isNaN(+d['IRI (Score)'])) ? -1 : +d['IRI (Score)'];
 
   function iriColor(v) {
     if (v >= 60) return '#f87171';
@@ -914,6 +920,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     if (f.includes('monitor_contratos_v2/tgn'))             return '✅ TGN (contratos)';
     if (f.includes('monitor_contratos_v2/flujo'))           return '✅ BORA+COMPR.AR+TGN';
     if (f.includes('monitor_contratos_v2'))                 return '✅ Contratos';
+    if (f.includes('fuera de COMPR.AR'))                    return '⚪ BORA (fuera de COMPR.AR)';
+    if (f.includes('monitor_contratos') && f.includes('COMPR.AR')) return '✅ COMPR.AR';
     if (f.includes('gob_bo_comprar_tgn'))                   return '✅ TGN';
     if (f.includes('senadores') && f.includes('nomina'))    return '✅ Senado (nómina)';
     if (f.includes('senadores') && f.includes('partido'))   return '✅ Senado (partidos)';
@@ -932,13 +940,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   }
 
   function renderTable() {
-    const rows = filterData().sort((a,b) => b['IRI (Score)'] - a['IRI (Score)']);
+    const rows = filterData().sort((a,b) => iriNum(b) - iriNum(a));
     document.getElementById('table-body').innerHTML = rows.map(d => `
       <tr>
         <td><span class="${badgeClass(d.Estado)}">${d.Estado || '-'}</span></td>
         <td><b>${d.Organismo}</b></td>
         <td style="color:#94a3b8">${d.Area}</td>
-        <td style="color:${iriColor(+d['IRI (Score)'])};font-weight:700;font-size:1rem">${(+d['IRI (Score)']).toFixed(1)}</td>
+        <td style="color:${iriNum(d) < 0 ? '#64748b' : iriColor(iriNum(d))};font-weight:700;font-size:1rem">${iriNum(d) < 0 ? sd('') : iriNum(d).toFixed(1)}</td>
         <td>${sd(d['Riesgo Financiero'])}</td>
         <td>${sd(d['Riesgo Contratación'])}</td>
         <td>${sd(d['Riesgo Operativo'])}</td>
@@ -950,7 +958,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   }
 
   function renderMainBar(data) {
-    const top = [...data].sort((a,b) => b['IRI (Score)'] - a['IRI (Score)']).slice(0,30).reverse();
+    const top = data.filter(d => iriNum(d) >= 0).sort((a,b) => iriNum(b) - iriNum(a)).slice(0,30).reverse();
     const colors = top.map(d => (d.Estado||'').includes('ALTO') ? '#f87171' : (d.Estado||'').includes('MEDIO') ? '#fbbf24' : '#4ade80');
     Plotly.react('chart-main', [{
       type: 'bar', orientation: 'h',
