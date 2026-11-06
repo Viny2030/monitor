@@ -747,7 +747,20 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
 
-  <p style="margin-top:1.2rem;color:#64748b"><b>Herramienta acad&eacute;mica.</b> Los scores son indicadores algor&iacute;tmicos basados en datos p&uacute;blicos: no implican juicio de valor, acusaci&oacute;n ni determinaci&oacute;n de responsabilidad sobre ning&uacute;n organismo o persona.</p>
+  <div id="relaciones">
+  <h2>🕸️ Relación con los otros sitios del ecosistema</h2>
+  <p>Este sitio es parte del <strong>Ecosistema de Transparencia</strong>: once monitores que se consultan entre sí. Abajo, con qué sitios intercambia datos (<em>usa →</em> = toma datos de ese sitio; <em>← lo usa</em> = ese sitio toma datos de este) y de qué fuentes oficiales se alimenta. El grafo es interactivo: hacé clic en cualquier sitio para ver su ficha.</p>
+  <iframe src="https://mapa.ecosistematransparencia.com.ar/grafo?embed=1&amp;nodo=monitor" title="Relación con los otros sitios del ecosistema" loading="lazy"
+          style="width:100%;height:560px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+  <p style="font-size:.85em"><a href="https://mapa.ecosistematransparencia.com.ar/grafo" target="_blank" rel="noopener">Abrir el grafo completo ↗</a></p>
+  <h3>Conexiones</h3>
+  <ul><li><strong>usa → Justicia</strong>: Toma magistrados y vacantes para el riesgo financiero, operativo y de datos.</li><li><strong>usa → Diputados</strong>: Toma bloques y KPIs reales de la HCDN.</li><li><strong>usa → Senadores</strong>: Toma la nómina y la participación promedio de senadores.</li><li><strong>usa → Contratos</strong>: Toma las licitaciones 2026 del BORA para marcar a los organismos que compran fuera de COMPR.AR (“sin dato de directas”). El % de directas sale de COMPR.AR 2016-2026.</li><li><strong>← lo usa Vectores</strong> <em>(planificado)</em>: Planificado: alimentar la dimensión R_Internacional del IRI. Todavía no conectado.</li><li><strong>← lo usa MEACI</strong> <em>(planificado)</em>: Planificado: aportar alertas internacionales al IRI. Todavía no conectado.</li><li><strong>← lo usa Mapa</strong>: Muestra el IRI global (proxy /iri/*) y el estado del sitio. La validación cruzada diaria revisa de qué año es su riesgo de contratación.</li></ul>
+  <h3>Fuentes oficiales</h3>
+  <ul><li>Justicia (magistrados, vacantes)</li><li>Diputados (bloques, KPIs HCDN)</li><li>Senadores (nómina, participación)</li><li>COMPR.AR — adjudicaciones 2016-2026 (datos.gob.ar)</li><li>Contratos (licitaciones BORA 2026)</li></ul>
+  <p style="font-size:.85em">Detalle de todas las conexiones y de cómo se verifican las cifras entre sitios: <a href="https://mapa.ecosistematransparencia.com.ar/manual#conexiones" target="_blank" rel="noopener">mapa.ecosistematransparencia.com.ar/manual#conexiones</a></p>
+</div>
+
+      <p style="margin-top:1.2rem;color:#64748b"><b>Herramienta acad&eacute;mica.</b> Los scores son indicadores algor&iacute;tmicos basados en datos p&uacute;blicos: no implican juicio de valor, acusaci&oacute;n ni determinaci&oacute;n de responsabilidad sobre ning&uacute;n organismo o persona.</p>
 </div>
 
 <div id="manual-en" lang="en" style="display:none">
@@ -828,7 +841,20 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
 
-  <p style="margin-top:1.2rem;color:#64748b"><b>Academic tool.</b> The scores are algorithmic indicators based on public data: they imply no value judgment, accusation or finding of responsibility about any body or person.</p>
+  <div id="relaciones-en">
+  <h2>🕸️ How this site connects to the rest of the ecosystem</h2>
+  <p>This site is part of the <strong>Transparency Ecosystem</strong>: eleven monitors that query each other. Below, which sites it exchanges data with (<em>uses →</em> = takes data from that site; <em>← used by</em> = that site takes data from this one) and which official sources feed it. The graph is interactive: click any site to see its profile.</p>
+  <iframe src="https://mapa.ecosistematransparencia.com.ar/grafo?embed=1&amp;nodo=monitor&amp;lang=en" title="How this site connects to the rest of the ecosystem" loading="lazy"
+          style="width:100%;height:560px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+  <p style="font-size:.85em"><a href="https://mapa.ecosistematransparencia.com.ar/grafo?lang=en" target="_blank" rel="noopener">Open the full graph ↗</a></p>
+  <h3>Connections</h3>
+  <ul><li><strong>uses → Justicia</strong>: Pulls judges and vacancies for financial, operational and data risk.</li><li><strong>uses → Diputados</strong>: Pulls blocs and real HCDN KPIs.</li><li><strong>uses → Senadores</strong>: Pulls the senators roster and average participation.</li><li><strong>uses → Contratos</strong>: Pulls 2026 BORA tenders to flag agencies that buy outside COMPR.AR (“no direct-award data”). The direct-award % comes from COMPR.AR 2016-2026.</li><li><strong>← used by Vectores</strong> <em>(planned)</em>: Planned: feed the IRI R_International dimension. Not connected yet.</li><li><strong>← used by MEACI</strong> <em>(planned)</em>: Planned: contribute international alerts to the IRI. Not connected yet.</li><li><strong>← used by Mapa</strong>: Shows the global IRI (proxy /iri/*) and site status. The daily cross-validation checks the year of its procurement risk data.</li></ul>
+  <h3>Official sources</h3>
+  <ul><li>Judiciary (judges, vacancies)</li><li>Deputies (blocs, HCDN KPIs)</li><li>Senators (roster, participation)</li><li>COMPR.AR — 2016-2026 awards (datos.gob.ar)</li><li>Contracts (2026 BORA tenders)</li></ul>
+  <p style="font-size:.85em">Every connection in detail, and how figures are cross-checked between sites: <a href="https://mapa.ecosistematransparencia.com.ar/en/manual#conexiones" target="_blank" rel="noopener">mapa.ecosistematransparencia.com.ar/en/manual#conexiones</a></p>
+</div>
+
+      <p style="margin-top:1.2rem;color:#64748b"><b>Academic tool.</b> The scores are algorithmic indicators based on public data: they imply no value judgment, accusation or finding of responsibility about any body or person.</p>
 </div>
 
 </div>
