@@ -8,6 +8,7 @@ Endpoints:
   GET /por-area/    organismos filtrados por area
   GET /top-riesgo   top N organismos de mayor IRI
   GET /resumen      estadisticas globales por area
+  GET /grafo        red organismo ↔ principales proveedores (COMPR.AR)
   POST /refresh     regenera el CSV (protegido por REFRESH_TOKEN)
 
 Variables de entorno:
@@ -17,7 +18,7 @@ Variables de entorno:
 import os
 import asyncio
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, RedirectResponse
 import pandas as pd
@@ -119,6 +120,7 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/processed", exist_ok=True)
 
     def _init_data():
+        _load_grafo_db()
         df_db = _load_from_db()
         if df_db is not None and len(df_db) > 0:
             df_db.to_csv(CSV_PATH, index=False, encoding="utf-8-sig")
@@ -371,6 +373,7 @@ def _ejecutar_motor() -> dict:
             filas = 0
         if result.returncode == 0 and filas > 0:
             _save_to_db(pd.read_csv(CSV_PATH))
+            _save_grafo_db()
             return {"status": "ok", "organismos": filas, "stdout": "", "stderr": log_content[-4000:]}
         motivo = (f"motor terminó con código {result.returncode}" if result.returncode != 0
                   else "el motor generó un dataset vacío")
@@ -430,6 +433,93 @@ def refresh_estado(x_refresh_token: str = Header(None)):
     """Estado del último refresh: sin_ejecutar | corriendo | ok | error."""
     _verificar_token(x_refresh_token)
     return {**_REFRESH_ESTADO, "datos_actualizados": _fecha_datos()}
+
+
+# ── GRAFO ORGANISMO ↔ PROVEEDOR (COMPR.AR) ────────────────────────────────────
+GRAFO_PATH = os.getenv("GRAFO_PATH", "data/processed/grafo_comprar.json")
+
+
+def _save_grafo_db() -> None:
+    """Guarda el grafo en Postgres: el archivo se pierde en cada redeploy."""
+    conn = _get_conn()
+    if not conn or not os.path.exists(GRAFO_PATH):
+        return
+    try:
+        with open(GRAFO_PATH, encoding="utf-8") as f:
+            contenido = f.read()
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS monitor_grafo "
+                    "(id SERIAL PRIMARY KEY, generado TIMESTAMPTZ DEFAULT now(), contenido TEXT NOT NULL)")
+        cur.execute("INSERT INTO monitor_grafo (contenido) VALUES (%s)", (contenido,))
+        cur.execute("DELETE FROM monitor_grafo WHERE id NOT IN "
+                    "(SELECT id FROM monitor_grafo ORDER BY id DESC LIMIT 3)")
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        print(f"⚠️  DB grafo save error: {e}")
+
+
+def _load_grafo_db() -> None:
+    if os.path.exists(GRAFO_PATH):
+        return
+    conn = _get_conn()
+    if not conn:
+        return
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT to_regclass('monitor_grafo')")
+        if cur.fetchone()[0]:
+            cur.execute("SELECT contenido FROM monitor_grafo ORDER BY id DESC LIMIT 1")
+            fila = cur.fetchone()
+            if fila:
+                os.makedirs(os.path.dirname(GRAFO_PATH) or ".", exist_ok=True)
+                with open(GRAFO_PATH, "w", encoding="utf-8") as f:
+                    f.write(fila[0])
+                print("✅ Grafo COMPR.AR restaurado desde DB")
+        conn.close()
+    except Exception as e:
+        print(f"⚠️  DB grafo load error: {e}")
+
+
+def _filtrar_grafo(g: dict, top: int, solo_compartidos: bool) -> dict:
+    """Se queda con los `top` principales proveedores de cada organismo y, si se
+    pide, solo con los proveedores que trabajan con más de un organismo."""
+    nodos = {n["id"]: n for n in g.get("nodos", [])}
+    aristas = [a for a in g.get("aristas", []) if a["rango"] <= top]
+    if solo_compartidos:
+        aristas = [a for a in aristas if nodos.get(a["to"], {}).get("organismos_total", 0) > 1]
+    usados = {a["from"] for a in aristas} | {a["to"] for a in aristas}
+    sel = [n for i, n in nodos.items() if i in usados]
+    grado = {}
+    for a in aristas:
+        grado[a["to"]] = grado.get(a["to"], 0) + 1
+    provs = [dict(n, organismos_en_grafo=grado.get(n["id"], 0)) for n in sel if n["tipo"] == "proveedor"]
+    orgs = [n for n in sel if n["tipo"] == "organismo"]
+    compartidos = sorted((p for p in provs if p["organismos_en_grafo"] > 1),
+                         key=lambda p: (-p["organismos_en_grafo"], -p["organismos_total"]))
+    return {
+        "nodos": orgs + provs, "aristas": aristas,
+        "resumen": {
+            "organismos": len(orgs), "proveedores": len(provs), "aristas": len(aristas),
+            "compartidos": len(compartidos), "top": top, "periodo": g.get("periodo"),
+            "generado": g.get("generado"), "fuente": g.get("fuente"),
+            "top_compartidos": [{"id": p["id"], "label": p["label"], "cuit": p["cuit"],
+                                 "organismos_en_grafo": p["organismos_en_grafo"],
+                                 "organismos_total": p["organismos_total"]} for p in compartidos[:10]],
+        },
+    }
+
+
+@app.get("/grafo")
+def get_grafo(top: int = Query(5, ge=1, le=10), solo_compartidos: bool = False):
+    """Red organismo ↔ principales proveedores (COMPR.AR, últimos ejercicios)."""
+    import json
+    if not os.path.exists(GRAFO_PATH):
+        raise HTTPException(status_code=503,
+                            detail="Grafo no disponible todavía: se genera con el próximo refresh")
+    with open(GRAFO_PATH, encoding="utf-8") as f:
+        g = json.load(f)
+    return _filtrar_grafo(g, top, solo_compartidos)
 
 
 # ── DASHBOARD HTML ────────────────────────────────────────────────────────────
@@ -516,6 +606,16 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     .info-box.ok   { border-left-color: #4ade80; }
     .formula-big { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 1rem 1.5rem; text-align: center; font-size: 1rem; font-weight: 700; color: #60a5fa; letter-spacing: .02em; margin: 0.8rem 0; }
 
+    /* === GRAFO === */
+    .grafo-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 1rem; }
+    .grafo-canvas { height: 620px; background: #0b1222; border: 1px solid #334155; border-radius: 10px; }
+    .grafo-info { font-size: 0.8rem; color: #94a3b8; line-height: 1.7; margin-top: 0.4rem; }
+    .grafo-info b { color: #e2e8f0; }
+    .grafo-lista { list-style: none; font-size: 0.8rem; margin-top: 0.4rem; }
+    .grafo-lista li { padding: 0.35rem 0; border-bottom: 1px solid #334155; cursor: pointer; color: #94a3b8; }
+    .grafo-lista li:hover { color: #60a5fa; }
+    @media (max-width: 900px) { .grafo-layout { grid-template-columns: 1fr; } .grafo-canvas { height: 460px; } }
+
     /* === NUEVAS SECCIONES === */
     .aviso-banner { margin: 1rem 1.5rem 0; background: #451a03; border: 1px solid #92400e; border-radius: 8px; padding: 0.75rem 1rem; font-size: 0.8rem; color: #fcd34d; display: flex; gap: 0.75rem; align-items: flex-start; }
     .aviso-banner b { color: #fbbf24; }
@@ -570,6 +670,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <!-- Nav tabs -->
 <nav class="nav-tabs">
   <button class="nav-tab active" onclick="showPage('dashboard',this)">&#x1F4CA; Dashboard</button>
+  <button class="nav-tab" onclick="showPage('grafo',this)">🕸️ Grafo</button>
   <button class="nav-tab" onclick="showPage('manual',this)">&#x1F4D6; Manual</button>
   <button class="nav-tab" onclick="showPage('autor',this)">&#x1F464; Sobre el Autor</button>
 </nav>
@@ -662,6 +763,57 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </div><!-- /#page-dashboard -->
 
 <!-- ══════════ TAB: MANUAL ══════════ -->
+<!-- ══════════ TAB: GRAFO ══════════ -->
+<div class="tab-page" id="page-grafo">
+<div class="section" style="padding-top:1.2rem">
+  <h2>🕸️ Grafo organismo ↔ principales proveedores (COMPR.AR <span id="g-periodo">—</span>)</h2>
+  <div id="g-filtros" style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center;margin-bottom:1rem">
+    <label style="font-size:0.82rem;color:#94a3b8">Proveedores por organismo
+      <select id="g-top" onchange="cargarGrafo()">
+        <option value="3">3 principales</option>
+        <option value="5" selected>5 principales</option>
+        <option value="10">10 principales</option>
+      </select>
+    </label>
+    <label style="font-size:0.82rem;color:#94a3b8;display:flex;align-items:center;gap:0.4rem">
+      <input type="checkbox" id="g-compartidos" onchange="cargarGrafo()" style="padding:0"> Solo proveedores de varios organismos
+    </label>
+  </div>
+  <div class="metrics" style="padding:0 0 1rem">
+    <div class="card"><div class="label">Organismos</div><div class="value blue" id="g-org">-</div></div>
+    <div class="card"><div class="label">Proveedores</div><div class="value" id="g-prov">-</div></div>
+    <div class="card"><div class="label">Vínculos</div><div class="value" id="g-ari">-</div></div>
+    <div class="card"><div class="label">Proveedores compartidos</div><div class="value amber" id="g-comp">-</div></div>
+  </div>
+  <div class="leyenda" style="margin:0 0 0.8rem">
+    <span><b style="color:#3b82f6">■</b> Organismo (tamaño: monto adjudicado)</span>
+    <span><b style="color:#4ade80">●</b> Proveedor de un organismo</span>
+    <span><b style="color:#fbbf24">●</b> Proveedor de varios organismos del grafo</span>
+    <span><b style="color:#f87171">—</b> Vínculo con contratación directa</span>
+    <span>Grosor: monto del vínculo</span>
+  </div>
+  <div class="grafo-layout">
+    <div id="g-canvas" class="grafo-canvas"><div id="loader">Cargando…</div></div>
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="label">Detalle</div>
+        <div id="g-info" class="grafo-info">Hacé clic en un nodo para ver sus datos.</div>
+      </div>
+      <div class="card">
+        <div class="label">Proveedores de varios organismos</div>
+        <ul id="g-lista" class="grafo-lista"></ul>
+      </div>
+    </div>
+  </div>
+  <p style="font-size:0.75rem;color:#64748b;margin-top:0.8rem">
+    Fuente: adjudicaciones de COMPR.AR en datos.gob.ar, en pesos, de los organismos que tienen % de directas calculado.
+    Cada organismo muestra solo sus principales proveedores por monto. Que un proveedor trabaje con muchos organismos
+    o concentre las compras de uno es un dato descriptivo: no implica irregularidad y no entra en el IRI.
+    Ver Manual → Grafo.
+  </p>
+</div>
+</div>
+
 <div class="tab-page" id="page-manual">
 <div class="manual-wrap">
   <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:0.4rem">
@@ -703,11 +855,24 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <li>El Bolet&iacute;n Oficial no se usa para el porcentaje: all&iacute; se publican casi todas las licitaciones pero solo una parte de las directas.</li>
   </ul>
 
+  <h2>🕸️ Grafo organismo ↔ proveedor</h2>
+  <p>La pestaña <b>Grafo</b> muestra, para cada organismo con porcentaje de directas calculado, sus <b>principales proveedores por monto</b> en COMPR.AR durante los mismos dos ejercicios del riesgo de contratación. Cada <b>cuadrado azul</b> es un organismo y cada <b>círculo</b> es un proveedor (CUIT).</p>
+  <ul>
+    <li><b>Proveedores por organismo:</b> se eligen 3, 5 o 10 principales. Con más proveedores aparecen más vínculos compartidos, pero el grafo se vuelve más denso.</li>
+    <li><b>Colores:</b> verde, si el proveedor está entre los principales de un solo organismo; amarillo, si lo está en varios. La línea es roja cuando al menos un procedimiento del vínculo fue una contratación directa.</li>
+    <li><b>Tamaños:</b> el cuadrado crece con el monto adjudicado del organismo y la línea, con el monto del vínculo.</li>
+    <li><b>Panel de detalle:</b> en un organismo muestra sus procedimientos, sus proveedores distintos y la parte del monto que se lleva el principal (el mismo dato que la columna <i>Fuente</i>). En un proveedor muestra con cuántos organismos del grafo aparece y a cuántos organismos les vendió en total, y enlaza a sus avisos 2026 en el sitio Contratos.</li>
+    <li><b>"Solo proveedores de varios organismos":</b> deja solo los proveedores compartidos y los organismos que los contratan.</li>
+  </ul>
+  <div class="info-box warn">El grafo es descriptivo y no cambia el IRI. Un proveedor grande que vende a muchos organismos, como una aseguradora o una imprenta, aparece en el centro por la naturaleza de lo que vende, no porque haya algo irregular. Solo se usan montos en pesos, y quedan afuera los organismos con menos de 20 procedimientos y los que compran fuera de COMPR.AR.</div>
+  <p>El grafo se recalcula con cada actualización diaria y se guarda en la base de datos para no perderse en un redeploy. El grafo de Contratos (BORA 2026) complementa este: allí se ven los avisos del año en curso, incluidos organismos que no usan COMPR.AR.</p>
+
   <h2>&#x1F5A5; C&oacute;mo usar el dashboard</h2>
   <ul>
     <li><b>Tarjetas superiores:</b> cantidad de organismos, IRI promedio y cantidad en cada nivel de riesgo.</li>
     <li><b>Gr&aacute;fico principal:</b> los 30 organismos con mayor IRI. Los que no tienen IRI no aparecen.</li>
     <li><b>Tabla:</b> se filtra por &aacute;rea, nivel de riesgo y nombre. Pasando el mouse por la columna <i>Fuente</i> se ve el detalle completo del origen del dato.</li>
+    <li><b>Grafo:</b> red de organismos y sus principales proveedores (ver arriba).</li>
   </ul>
 
   <h2>&#x1F3D7; Repositorios integrados</h2>
@@ -743,6 +908,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>GET /por-area/{area}</td><td>Organismos filtrados por &aacute;rea</td></tr>
     <tr><td>GET /top-riesgo?n=10</td><td>Top N organismos de mayor IRI</td></tr>
     <tr><td>GET /resumen</td><td>Estad&iacute;sticas globales por &aacute;rea</td></tr>
+    <tr><td>GET /grafo?top=5</td><td>Red organismo ↔ principales proveedores (COMPR.AR); <code>solo_compartidos=true</code> deja los proveedores de varios organismos</td></tr>
     <tr><td>POST /refresh</td><td>Regenera el CSV (requiere <code>X-Refresh-Token</code>)</td></tr>
     <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
@@ -797,11 +963,24 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <li>The Official Gazette is not used for the percentage: almost all tenders are published there, but only part of the direct contracts.</li>
   </ul>
 
+  <h2>🕸️ Body ↔ supplier graph</h2>
+  <p>The <b>Grafo (Graph)</b> tab shows, for each body with a computed direct-contracting percentage, its <b>main suppliers by amount</b> in COMPR.AR over the same two fiscal years used for procurement risk. Each <b>blue square</b> is a body and each <b>circle</b> is a supplier (CUIT tax ID).</p>
+  <ul>
+    <li><b>Suppliers per body:</b> choose the top 3, 5 or 10. More suppliers reveal more shared links but make the graph denser.</li>
+    <li><b>Colours:</b> green when the supplier is among the main suppliers of a single body, yellow when it is among those of several. A line is red when at least one procedure in that link was a direct award.</li>
+    <li><b>Sizes:</b> a square grows with the body's awarded amount, and a line grows with the amount of that link.</li>
+    <li><b>Detail panel:</b> for a body it shows its procedures, its distinct suppliers and the share of the amount that goes to the main supplier (the same figure as the <i>Fuente</i> column). For a supplier it shows how many bodies in the graph it appears with and how many bodies it sold to in total, and it links to the supplier's 2026 notices on the Contratos site.</li>
+    <li><b>"Solo proveedores de varios organismos"</b> (suppliers of several bodies only): keeps only shared suppliers and the bodies that hire them.</li>
+  </ul>
+  <div class="info-box warn">The graph is descriptive and does not change the IRI. A large supplier that sells to many bodies, such as an insurer or a printer, sits at the centre because of what it sells, not because anything is wrong. Only amounts in pesos are used. Bodies with fewer than 20 procedures and bodies that buy outside COMPR.AR are left out.</div>
+  <p>The graph is recomputed with every daily refresh and stored in the database so that it survives a redeploy. The Contratos graph (BORA 2026) complements this one: it shows the current year's notices, including bodies that do not use COMPR.AR.</p>
+
   <h2>&#x1F5A5; Using the dashboard</h2>
   <ul>
     <li><b>Top cards:</b> number of bodies, average IRI and number at each risk level.</li>
     <li><b>Main chart:</b> the 30 bodies with the highest IRI. Bodies without an IRI are not shown.</li>
     <li><b>Table:</b> filter by area, risk level and name. Hovering over the <i>Fuente</i> column shows the full detail of where the data comes from.</li>
+    <li><b>Grafo (Graph):</b> network of bodies and their main suppliers (see above).</li>
   </ul>
 
   <h2>&#x1F3D7; Integrated repositories</h2>
@@ -837,6 +1016,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>GET /por-area/{area}</td><td>Bodies filtered by area</td></tr>
     <tr><td>GET /top-riesgo?n=10</td><td>Top N bodies by IRI</td></tr>
     <tr><td>GET /resumen</td><td>Global statistics by area</td></tr>
+    <tr><td>GET /grafo?top=5</td><td>Body ↔ main supplier network (COMPR.AR); <code>solo_compartidos=true</code> keeps only suppliers of several bodies</td></tr>
     <tr><td>POST /refresh</td><td>Regenerates the CSV (requires <code>X-Refresh-Token</code>)</td></tr>
     <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
@@ -967,11 +1147,122 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 </footer>
 
 <script>
+  // ── GRAFO ORGANISMO ↔ PROVEEDOR ──────────────────────────────────────────
+  const GRAFO = { red: null, nodos: {}, lib: null, init: false };
+
+  function escG(t) {
+    return String(t ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+  function montoG(v) {
+    const n = Number(v) || 0;
+    if (n >= 1e9) return '$' + (n / 1e9).toFixed(1).replace('.', ',') + ' mil M';
+    if (n >= 1e6) return '$' + (n / 1e6).toFixed(1).replace('.', ',') + ' M';
+    return '$' + Math.round(n).toLocaleString('es-AR');
+  }
+  function libGrafo() {
+    if (window.vis && window.vis.Network) return Promise.resolve();
+    if (!GRAFO.lib) {
+      GRAFO.lib = new Promise((ok, mal) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/vis-network/9.1.9/standalone/umd/vis-network.min.js';
+        s.onload = ok;
+        s.onerror = () => { GRAFO.lib = null; mal(new Error('no se pudo cargar la biblioteca del grafo')); };
+        document.head.appendChild(s);
+      });
+    }
+    return GRAFO.lib;
+  }
+
+  async function cargarGrafo() {
+    GRAFO.init = true;
+    const cont = document.getElementById('g-canvas');
+    cont.innerHTML = '<div id="loader">Cargando…</div>';
+    const top = document.getElementById('g-top').value;
+    const comp = document.getElementById('g-compartidos').checked;
+    try {
+      const [r] = await Promise.all([fetch(`/grafo?top=${top}&solo_compartidos=${comp}`), libGrafo()]);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || ('HTTP ' + r.status));
+      dibujarGrafo(d);
+    } catch (e) {
+      cont.innerHTML = '<div style="padding:1.5rem;color:#f87171;font-size:0.85rem">Grafo no disponible: ' + escG(e.message) + '</div>';
+    }
+  }
+
+  function dibujarGrafo(d) {
+    const r = d.resumen || {};
+    document.getElementById('g-periodo').textContent = r.periodo || '—';
+    document.getElementById('g-org').textContent = r.organismos ?? '-';
+    document.getElementById('g-prov').textContent = r.proveedores ?? '-';
+    document.getElementById('g-ari').textContent = r.aristas ?? '-';
+    document.getElementById('g-comp').textContent = r.compartidos ?? '-';
+    const lista = document.getElementById('g-lista');
+    lista.innerHTML = (r.top_compartidos || []).length
+      ? r.top_compartidos.map(p => `<li data-id="${escG(p.id)}">${escG(p.label)} — <b>${p.organismos_en_grafo}</b> en el grafo (${p.organismos_total} en total)</li>`).join('')
+      : '<li style="cursor:default">Ninguno con estos filtros.</li>';
+    lista.querySelectorAll('li[data-id]').forEach(li => li.addEventListener('click', () => enfocarGrafo(li.dataset.id)));
+
+    const cont = document.getElementById('g-canvas');
+    if (!d.nodos.length) { cont.innerHTML = '<div style="padding:1.5rem;color:#64748b">Sin datos para estos filtros.</div>'; return; }
+    GRAFO.nodos = {};
+    const orgs = d.nodos.filter(n => n.tipo === 'organismo');
+    const maxM = Math.max(...orgs.map(n => n.monto), 1);
+    const maxA = Math.max(...d.aristas.map(a => a.monto), 1);
+    const nodos = d.nodos.map(n => {
+      GRAFO.nodos[n.id] = n;
+      if (n.tipo === 'organismo') {
+        const nom = n.label.replace(/^\d+\s*-\s*/, '');
+        return { id: n.id, label: nom.length > 30 ? nom.slice(0, 29) + '…' : nom, shape: 'square',
+                 size: 10 + 26 * Math.sqrt(n.monto / maxM), color: { background: '#3b82f6', border: '#93c5fd' },
+                 font: { color: '#e2e8f0', size: 12 } };
+      }
+      const comp = n.organismos_en_grafo > 1;
+      return { id: n.id, label: comp ? n.label.slice(0, 22) : '', shape: 'dot',
+               size: comp ? 6 + 3 * Math.min(n.organismos_en_grafo, 8) : 6,
+               color: { background: comp ? '#fbbf24' : '#4ade80', border: comp ? '#fbbf24' : '#4ade80' },
+               font: { color: '#94a3b8', size: 10 } };
+    });
+    const aristas = d.aristas.map(a => ({ from: a.from, to: a.to, width: 1 + 6 * Math.sqrt(a.monto / maxA),
+      color: { color: a.directas > 0 ? '#f87171' : '#475569', opacity: 0.8 } }));
+    cont.innerHTML = '';
+    if (GRAFO.red) GRAFO.red.destroy();
+    GRAFO.red = new vis.Network(cont, { nodes: new vis.DataSet(nodos), edges: new vis.DataSet(aristas) }, {
+      physics: { solver: 'forceAtlas2Based', stabilization: { iterations: 300 } },
+      interaction: { hover: true }, edges: { smooth: false },
+    });
+    GRAFO.red.once('stabilizationIterationsDone', () => { GRAFO.red.setOptions({ physics: false }); GRAFO.red.fit(); });
+    GRAFO.red.on('click', e => { if (e.nodes.length) infoGrafo(e.nodes[0]); });
+  }
+
+  function infoGrafo(id) {
+    const n = GRAFO.nodos[id];
+    if (!n) return;
+    const el = document.getElementById('g-info');
+    if (n.tipo === 'organismo') {
+      el.innerHTML = `<b>${escG(n.label)}</b><br>Procedimientos adjudicados: <b>${n.procesos}</b><br>
+        Proveedores distintos: <b>${n.proveedores}</b><br>Monto adjudicado (pesos): <b>${montoG(n.monto)}</b><br>
+        Principal proveedor: <b>${n.concentracion ?? '—'} %</b> del monto`;
+    } else {
+      el.innerHTML = `<b>${escG(n.label)}</b><br>CUIT: <code>${escG(n.cuit)}</code><br>
+        Organismos en este grafo: <b>${n.organismos_en_grafo}</b><br>
+        Organismos que le adjudicaron (en total): <b>${n.organismos_total}</b><br>
+        <a href="https://contratos.ecosistematransparencia.com.ar/?proveedor=${encodeURIComponent(n.cuit)}" target="_blank" rel="noopener">Ver sus avisos 2026 en Contratos ↗</a>`;
+    }
+  }
+
+  function enfocarGrafo(id) {
+    if (!GRAFO.red || !GRAFO.nodos[id]) return;
+    GRAFO.red.selectNodes([id]);
+    GRAFO.red.focus(id, { scale: 1.3, animation: true });
+    infoGrafo(id);
+  }
+
   function showPage(name, btn) {
     document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
     document.getElementById('page-' + name).classList.add('active');
     btn.classList.add('active');
+    if (name === 'grafo' && !GRAFO.init) cargarGrafo();
   }
 
   let allData = [];
