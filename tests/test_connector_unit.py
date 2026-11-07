@@ -232,3 +232,38 @@ def test_match_bora_nombres():
     assert c._match_bora("374 - Estado Mayor General del Ejercito", act) == (161, 0)
     # otra repartición con nombre parecido no debe tomar los datos de la Policía
     assert c._match_bora("403 - Superintendencia de Bienestar de la Policia Federal Argentina", act) is None
+
+
+def test_organismos_comprar_dos_capas(monkeypatch):
+    """% de directas solo desde COMPR.AR (últimos ejercicios, mínimo de
+    procedimientos) y "sin dato" para quien licita en el BORA fuera de COMPR.AR."""
+    import connector as c
+    filas = ["Numero_Proceso,Descripcion_SAF,Tipo_de_Procedimiento,Ejercicio,CUIT,Monto,Moneda"]
+    # Gendarmería: 30 procedimientos 2025-2026, 24 directas; uno de 2019 que no cuenta
+    for i in range(30):
+        tipo = "Contratación Directa" if i < 24 else "Licitacion Pública"
+        filas.append(f"G{i},375 - Gendarmeria Nacional,{tipo},{2025 + i % 2},30-1-{i % 3},100,Peso Argentino")
+    filas.append("G99,375 - Gendarmeria Nacional,Licitacion Pública,2019,30-1-0,100,Peso Argentino")
+    # Organismo chico: 5 procedimientos, queda afuera por el mínimo
+    for i in range(5):
+        filas.append(f"T{i},113 - Teatro Nacional Cervantes,Contratación Directa,2026,30-2-0,10,Peso Argentino")
+    csv = ("\n".join(filas) + "\n").encode("utf-8")
+
+    class R:
+        content = csv
+        def raise_for_status(self): pass
+    monkeypatch.setattr(c.requests, "get", lambda *a, **k: R())
+
+    act = {
+        c._norm_org("GENDARMERÍA NACIONAL"): {"nombre": "GENDARMERÍA NACIONAL", "avisos": 14, "licitaciones": 14, "directas": 0},
+        c._norm_org("BANCO DE LA NACIÓN ARGENTINA"): {"nombre": "BANCO DE LA NACIÓN ARGENTINA", "avisos": 30, "licitaciones": 30, "directas": 0},
+    }
+    rows = {r["Organismo"]: r for r in c._organismos_comprar(act)}
+    assert set(rows) == {"375 - Gendarmeria Nacional", "BANCO DE LA NACIÓN ARGENTINA"}
+    g = rows["375 - Gendarmeria Nacional"]
+    assert g["Riesgo Contratación"] == 80.0
+    assert "COMPR.AR 2025-2026: 30 procedimientos, 24 directas" in g["Fuente"]
+    assert "BORA 2026: 14 adjudicaciones" in g["Fuente"]
+    b = rows["BANCO DE LA NACIÓN ARGENTINA"]
+    assert b["Riesgo Contratación"] is None and b["IRI (Score)"] is None
+    assert "sin dato de directas: compra fuera de COMPR.AR" in b["Fuente"]

@@ -472,6 +472,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     .badge-red   { background: #450a0a; color: #f87171; }
     .badge-amber { background: #451a03; color: #fbbf24; }
     .badge-green { background: #052e16; color: #4ade80; }
+    .badge-gray  { background: #1e293b; color: #94a3b8; }
     #table-wrap { background: #0f172a; border: 1px solid #334155; border-radius: 10px; overflow: auto; max-height: 440px; }
     .row-charts { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
     @media (max-width: 700px) { .row-charts { grid-template-columns: 1fr; } }
@@ -502,6 +503,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     .manual-wrap p  { font-size: 0.85rem; color: #94a3b8; line-height: 1.7; margin-bottom: 0.5rem; }
     .manual-wrap ul { padding-left: 1.4rem; margin-bottom: 0.6rem; }
     .manual-wrap li { font-size: 0.85rem; color: #94a3b8; line-height: 1.8; }
+    .manual-lang { background:#1e293b; border:1px solid #334155; color:#94a3b8; border-radius:4px; padding:2px 10px; font-size:0.75rem; cursor:pointer; }
+    .manual-lang.activo { background:#1e3a8a; border-color:#3b82f6; color:#e2e8f0; }
     .manual-wrap code { background: #1e293b; color: #7dd3fc; padding: 0.1rem 0.45rem; border-radius: 4px; font-size: 0.82rem; }
     .manual-table { width: 100%; border-collapse: collapse; font-size: 0.83rem; margin-bottom: 1rem; }
     .manual-table th { background: #1e293b; color: #94a3b8; text-align: left; padding: 0.55rem 0.75rem; border-bottom: 1px solid #334155; font-weight: 600; }
@@ -661,25 +664,51 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
 <!-- ══════════ TAB: MANUAL ══════════ -->
 <div class="tab-page" id="page-manual">
 <div class="manual-wrap">
+  <div style="display:flex;justify-content:flex-end;gap:6px;margin-bottom:0.4rem">
+    <button type="button" class="manual-lang activo" data-lang="es" onclick="setManualLang('es')">ES</button>
+    <button type="button" class="manual-lang" data-lang="en" onclick="setManualLang('en')">EN</button>
+  </div>
 
+<div id="manual-es" lang="es">
   <h2>&#x2139;&#xFE0F; &iquest;Qu&eacute; es el Monitor IRI?</h2>
-  <p>El <b>Monitor de Riesgo Institucional (IRI)</b> es una herramienta acad&eacute;mica de c&oacute;digo abierto que cuantifica niveles de riesgo de corrupci&oacute;n e ineficiencia en organismos del Estado argentino.</p>
+  <p>El <b>Monitor de Riesgo Institucional (IRI)</b> es una herramienta acad&eacute;mica de c&oacute;digo abierto que cuantifica niveles de riesgo de corrupci&oacute;n e ineficiencia en organismos del Estado argentino. Re&uacute;ne en una sola tabla los indicadores de los otros sitios del ecosistema (Justicia, Diputados, Senado, Contratos y Tesorer&iacute;a).</p>
 
   <h2>&#x1F9EE; F&oacute;rmula IRI</h2>
   <div class="formula-big">IRI = R_Financiero &times; 35% &nbsp;+&nbsp; R_Contrataci&oacute;n &times; 30% &nbsp;+&nbsp; R_Operativo &times; 20% &nbsp;+&nbsp; R_Datos &times; 15%</div>
   <table class="manual-table">
     <tr><th>Componente</th><th>Peso</th><th>Descripci&oacute;n</th></tr>
-    <tr><td>R_Financiero</td><td>35%</td><td>Irregularidades presupuestarias, desvios en ejecucion del gasto.</td></tr>
-    <tr><td>R_Contrataci&oacute;n</td><td>30%</td><td>Proporci&oacute;n de contrataciones directas vs. licitaciones.</td></tr>
-    <tr><td>R_Operativo</td><td>20%</td><td>Inasistencia legislativa, tasa de vacancia judicial, participation_pct senado.</td></tr>
+    <tr><td>R_Financiero</td><td>35%</td><td>Irregularidades presupuestarias, desv&iacute;os en ejecuci&oacute;n del gasto.</td></tr>
+    <tr><td>R_Contrataci&oacute;n</td><td>30%</td><td>Proporci&oacute;n de contrataciones directas sobre el total de procedimientos (ver abajo).</td></tr>
+    <tr><td>R_Operativo</td><td>20%</td><td>Inasistencia legislativa, tasa de vacancia judicial, participaci&oacute;n en el Senado.</td></tr>
     <tr><td>R_Datos</td><td>15%</td><td>Calidad y disponibilidad de informaci&oacute;n p&uacute;blica.</td></tr>
   </table>
+  <p><b>Componentes sin dato.</b> Si un organismo no tiene dato para un componente, ese componente no se rellena con un valor fijo: se muestra <code>s/d</code> y el IRI se calcula con los componentes medidos, repartiendo sus pesos para que sumen 100%. La columna <i>Componentes con dato</i> dice cu&aacute;ntos se usaron.</p>
   <table class="manual-table">
     <tr><th>Score IRI</th><th>Nivel de riesgo</th></tr>
     <tr><td>0 &ndash; 29</td><td>&#x1F7E2; BAJO &mdash; dentro de par&aacute;metros normales</td></tr>
     <tr><td>30 &ndash; 59</td><td>&#x1F7E1; MEDIO &mdash; requiere seguimiento</td></tr>
     <tr><td>60 &ndash; 100</td><td>&#x1F534; ALTO &mdash; alerta de riesgo institucional</td></tr>
+    <tr><td>60 &ndash; 100 con un solo componente</td><td>&#x1F7E1; MEDIO (dato parcial) &mdash; no se marca ALTO con una sola medici&oacute;n</td></tr>
+    <tr><td>sin componentes</td><td>&#x26AA; SIN DATOS &mdash; no se calcula IRI; va al final de la tabla y no entra en el gr&aacute;fico</td></tr>
   </table>
+
+  <h2>&#x1F4C4; Riesgo de contrataci&oacute;n</h2>
+  <p>Se calcula con las <b>adjudicaciones de COMPR.AR</b> publicadas en datos.gob.ar (archivo 2016-2026), tomando los dos ejercicios m&aacute;s recientes:</p>
+  <div class="formula-big">R_Contrataci&oacute;n = contrataciones directas &divide; procedimientos adjudicados &times; 100</div>
+  <ul>
+    <li>Numerador y denominador salen de la misma fuente completa, as&iacute; que el porcentaje no queda sesgado.</li>
+    <li>Solo se calcula para organismos con <b>20 procedimientos o m&aacute;s</b>: con pocos casos el porcentaje no es confiable (1 de 2 = 50%).</li>
+    <li>La columna <i>Fuente</i> informa, adem&aacute;s, qu&eacute; parte del monto adjudicado se lleva el <b>principal proveedor</b> y cu&aacute;ntas adjudicaciones 2026 public&oacute; el organismo en el Bolet&iacute;n Oficial. La concentraci&oacute;n es informativa: no entra en el puntaje.</li>
+    <li>Los organismos que licitan en el <b>Bolet&iacute;n Oficial</b> pero no aparecen en COMPR.AR (por ejemplo ARCA, Banco Naci&oacute;n o los Ministerios P&uacute;blicos) compran fuera de ese sistema: sus directas no se publican en ning&uacute;n lado. Se listan como <i>&ldquo;sin dato de directas: compra fuera de COMPR.AR&rdquo;</i>, sin porcentaje, porque un 0% ser&iacute;a enga&ntilde;oso.</li>
+    <li>El Bolet&iacute;n Oficial no se usa para el porcentaje: all&iacute; se publican casi todas las licitaciones pero solo una parte de las directas.</li>
+  </ul>
+
+  <h2>&#x1F5A5; C&oacute;mo usar el dashboard</h2>
+  <ul>
+    <li><b>Tarjetas superiores:</b> cantidad de organismos, IRI promedio y cantidad en cada nivel de riesgo.</li>
+    <li><b>Gr&aacute;fico principal:</b> los 30 organismos con mayor IRI. Los que no tienen IRI no aparecen.</li>
+    <li><b>Tabla:</b> se filtra por &aacute;rea, nivel de riesgo y nombre. Pasando el mouse por la columna <i>Fuente</i> se ve el detalle completo del origen del dato.</li>
+  </ul>
 
   <h2>&#x1F3D7; Repositorios integrados</h2>
   <table class="manual-table">
@@ -688,19 +717,21 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>justicia</td><td>IRA por juzgado, vacantes judiciales, magistrados.</td></tr>
     <tr><td>monitor_legistativo</td><td>NAPE, IQP, asistencia &mdash; C&aacute;mara de Diputados.</td></tr>
     <tr><td>monitor_legistativo_senadores</td><td>Participaci&oacute;n, reporte por partido &mdash; Senado.</td></tr>
-    <tr><td>monitor_contratos_v2</td><td>BORA + COMPR.AR + TGN. Detecci&oacute;n de irregularidades.</td></tr>
+    <tr><td>monitor_contratos_v2</td><td>Adjudicaciones del Bolet&iacute;n Oficial 2026; el Monitor suma COMPR.AR (datos.gob.ar).</td></tr>
     <tr><td>gob_bo_comprar_tgn</td><td>Tesorer&iacute;a General de la Naci&oacute;n Argentina.</td></tr>
   </table>
 
   <h2>&#x1F511; Variables de entorno</h2>
   <table class="manual-table">
     <tr><th>Variable</th><th>Descripci&oacute;n</th></tr>
-    <tr><td>JUSTICIA_API_URL</td><td>URL del servicio justicia en Railway</td></tr>
-    <tr><td>LEGISTATIVO_API_URL</td><td>URL del servicio monitor_legistativo en Railway</td></tr>
-    <tr><td>SENADORES_API_URL</td><td>URL del servicio senadores en Railway</td></tr>
-    <tr><td>CONTRATOS_AR_API_URL</td><td>URL de monitor_contratos_v2 en Railway</td></tr>
-    <tr><td>TGN_AR_API_URL</td><td>URL de gob_bo_comprar_tgn en Railway</td></tr>
-    <tr><td>REFRESH_TOKEN</td><td>Token para <code>POST /refresh</code> y <code>/reset-db</code> (obligatorio: sin él quedan deshabilitados)</td></tr>
+    <tr><td>JUSTICIA_API_URL</td><td>URL del servicio justicia</td></tr>
+    <tr><td>LEGISTATIVO_API_URL</td><td>URL del servicio monitor_legistativo</td></tr>
+    <tr><td>SENADORES_API_URL</td><td>URL del servicio senadores</td></tr>
+    <tr><td>CONTRATOS_AR_API_URL</td><td>URL de monitor_contratos_v2</td></tr>
+    <tr><td>TGN_AR_API_URL</td><td>URL de gob_bo_comprar_tgn</td></tr>
+    <tr><td>COMPRAR_HIST_URL</td><td>Archivo de adjudicaciones COMPR.AR (por defecto, el 2016-2026 de datos.gob.ar)</td></tr>
+    <tr><td>COMPRAR_EJERCICIOS / COMPRAR_MIN_PROC</td><td>Ejercicios que se toman (2) y m&iacute;nimo de procedimientos por organismo (20)</td></tr>
+    <tr><td>REFRESH_TOKEN</td><td>Token para <code>POST /refresh</code> y <code>/reset-db</code> (obligatorio: sin &eacute;l quedan deshabilitados)</td></tr>
   </table>
 
   <h2>&#x1F4CB; Endpoints de la API</h2>
@@ -715,6 +746,116 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>POST /refresh</td><td>Regenera el CSV (requiere <code>X-Refresh-Token</code>)</td></tr>
     <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
+
+  <div id="relaciones">
+  <h2>🕸️ Relación con los otros sitios del ecosistema</h2>
+  <p>Este sitio es parte del <strong>Ecosistema de Transparencia</strong>: once monitores que se consultan entre sí. Abajo, con qué sitios intercambia datos (<em>usa →</em> = toma datos de ese sitio; <em>← lo usa</em> = ese sitio toma datos de este) y de qué fuentes oficiales se alimenta. El grafo es interactivo: hacé clic en cualquier sitio para ver su ficha.</p>
+  <iframe src="https://mapa.ecosistematransparencia.com.ar/grafo?embed=1&amp;nodo=monitor" title="Relación con los otros sitios del ecosistema" loading="lazy"
+          style="width:100%;height:560px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+  <p style="font-size:.85em"><a href="https://mapa.ecosistematransparencia.com.ar/grafo" target="_blank" rel="noopener">Abrir el grafo completo ↗</a></p>
+  <h3>Conexiones</h3>
+  <ul><li><strong>usa → Justicia</strong>: Toma magistrados y vacantes para el riesgo financiero, operativo y de datos.</li><li><strong>usa → Diputados</strong>: Toma bloques y KPIs reales de la HCDN.</li><li><strong>usa → Senadores</strong>: Toma la nómina y la participación promedio de senadores.</li><li><strong>usa → Contratos</strong>: Toma las licitaciones 2026 del BORA para marcar a los organismos que compran fuera de COMPR.AR (“sin dato de directas”). El % de directas sale de COMPR.AR 2016-2026.</li><li><strong>← lo usa Vectores</strong> <em>(planificado)</em>: Planificado: alimentar la dimensión R_Internacional del IRI. Todavía no conectado.</li><li><strong>← lo usa MEACI</strong> <em>(planificado)</em>: Planificado: aportar alertas internacionales al IRI. Todavía no conectado.</li><li><strong>← lo usa Mapa</strong>: Muestra el IRI global (proxy /iri/*) y el estado del sitio. La validación cruzada diaria revisa de qué año es su riesgo de contratación.</li></ul>
+  <h3>Fuentes oficiales</h3>
+  <ul><li>Justicia (magistrados, vacantes)</li><li>Diputados (bloques, KPIs HCDN)</li><li>Senadores (nómina, participación)</li><li>COMPR.AR — adjudicaciones 2016-2026 (datos.gob.ar)</li><li>Contratos (licitaciones BORA 2026)</li></ul>
+  <p style="font-size:.85em">Detalle de todas las conexiones y de cómo se verifican las cifras entre sitios: <a href="https://mapa.ecosistematransparencia.com.ar/manual#conexiones" target="_blank" rel="noopener">mapa.ecosistematransparencia.com.ar/manual#conexiones</a></p>
+</div>
+
+      <p style="margin-top:1.2rem;color:#64748b"><b>Herramienta acad&eacute;mica.</b> Los scores son indicadores algor&iacute;tmicos basados en datos p&uacute;blicos: no implican juicio de valor, acusaci&oacute;n ni determinaci&oacute;n de responsabilidad sobre ning&uacute;n organismo o persona.</p>
+</div>
+
+<div id="manual-en" lang="en" style="display:none">
+  <h2>&#x2139;&#xFE0F; What is the IRI Monitor?</h2>
+  <p>The <b>Institutional Risk Monitor (IRI, from its Spanish name)</b> is an open-source academic tool that quantifies levels of corruption and inefficiency risk in Argentine government bodies. It brings together in a single table the indicators of the other sites in the ecosystem (Judiciary, Chamber of Deputies, Senate, Contracts and Treasury).</p>
+
+  <h2>&#x1F9EE; IRI formula</h2>
+  <div class="formula-big">IRI = R_Financial &times; 35% &nbsp;+&nbsp; R_Procurement &times; 30% &nbsp;+&nbsp; R_Operational &times; 20% &nbsp;+&nbsp; R_Data &times; 15%</div>
+  <table class="manual-table">
+    <tr><th>Component</th><th>Weight</th><th>Description</th></tr>
+    <tr><td>R_Financial (Financiero)</td><td>35%</td><td>Budget irregularities, deviations in spending execution.</td></tr>
+    <tr><td>R_Procurement (Contrataci&oacute;n)</td><td>30%</td><td>Share of direct contracting over all procurement procedures (see below).</td></tr>
+    <tr><td>R_Operational (Operativo)</td><td>20%</td><td>Legislative absenteeism, judicial vacancy rate, participation in the Senate.</td></tr>
+    <tr><td>R_Data (Datos)</td><td>15%</td><td>Quality and availability of public information.</td></tr>
+  </table>
+  <p><b>Components without data.</b> When a body has no data for a component, that component is not filled with a fixed value: it shows <code>s/d</code> (no data) and the IRI is computed with the measured components, redistributing their weights so they add up to 100%. The <i>Componentes con dato</i> (components with data) column says how many were used.</p>
+  <table class="manual-table">
+    <tr><th>IRI score</th><th>Risk level</th></tr>
+    <tr><td>0 &ndash; 29</td><td>&#x1F7E2; BAJO (low) &mdash; within normal parameters</td></tr>
+    <tr><td>30 &ndash; 59</td><td>&#x1F7E1; MEDIO (medium) &mdash; needs follow-up</td></tr>
+    <tr><td>60 &ndash; 100</td><td>&#x1F534; ALTO (high) &mdash; institutional risk alert</td></tr>
+    <tr><td>60 &ndash; 100 with a single component</td><td>&#x1F7E1; MEDIO (dato parcial = partial data) &mdash; a single measurement is never marked high</td></tr>
+    <tr><td>no components</td><td>&#x26AA; SIN DATOS (no data) &mdash; no IRI is computed; the body goes to the bottom of the table and is left out of the chart</td></tr>
+  </table>
+
+  <h2>&#x1F4C4; Procurement risk</h2>
+  <p>It is computed from the <b>COMPR.AR contract awards</b> published on datos.gob.ar (2016-2026 file), using the two most recent fiscal years:</p>
+  <div class="formula-big">R_Procurement = direct contracts &divide; awarded procedures &times; 100</div>
+  <ul>
+    <li>Numerator and denominator come from the same complete source, so the percentage is not biased.</li>
+    <li>It is only computed for bodies with <b>20 procedures or more</b>: with few cases the percentage is unreliable (1 out of 2 = 50%).</li>
+    <li>The <i>Fuente</i> (source) column also reports what share of the awarded amount goes to the <b>main supplier</b> and how many 2026 awards the body published in the Official Gazette (BORA). Concentration is informative only: it does not enter the score.</li>
+    <li>Bodies that publish tenders in the <b>Official Gazette</b> but do not appear in COMPR.AR (for example ARCA, Banco Naci&oacute;n or the Public Prosecutor's and Public Defender's offices) buy outside that system: their direct contracts are not published anywhere. They are listed as <i>&ldquo;sin dato de directas: compra fuera de COMPR.AR&rdquo;</i> (no direct-contracting data: buys outside COMPR.AR), with no percentage, because 0% would be misleading.</li>
+    <li>The Official Gazette is not used for the percentage: almost all tenders are published there, but only part of the direct contracts.</li>
+  </ul>
+
+  <h2>&#x1F5A5; Using the dashboard</h2>
+  <ul>
+    <li><b>Top cards:</b> number of bodies, average IRI and number at each risk level.</li>
+    <li><b>Main chart:</b> the 30 bodies with the highest IRI. Bodies without an IRI are not shown.</li>
+    <li><b>Table:</b> filter by area, risk level and name. Hovering over the <i>Fuente</i> column shows the full detail of where the data comes from.</li>
+  </ul>
+
+  <h2>&#x1F3D7; Integrated repositories</h2>
+  <table class="manual-table">
+    <tr><th>Repository</th><th>Data it provides</th></tr>
+    <tr><td>monitor (central)</td><td>Main FastAPI app. HTML dashboard with Plotly.js.</td></tr>
+    <tr><td>justicia</td><td>IRA per court, judicial vacancies, judges.</td></tr>
+    <tr><td>monitor_legistativo</td><td>NAPE, IQP, attendance &mdash; Chamber of Deputies.</td></tr>
+    <tr><td>monitor_legistativo_senadores</td><td>Participation, report by party &mdash; Senate.</td></tr>
+    <tr><td>monitor_contratos_v2</td><td>2026 contract awards from the Official Gazette; the Monitor adds COMPR.AR (datos.gob.ar).</td></tr>
+    <tr><td>gob_bo_comprar_tgn</td><td>National Treasury (Tesorer&iacute;a General de la Naci&oacute;n).</td></tr>
+  </table>
+
+  <h2>&#x1F511; Environment variables</h2>
+  <table class="manual-table">
+    <tr><th>Variable</th><th>Description</th></tr>
+    <tr><td>JUSTICIA_API_URL</td><td>URL of the justicia service</td></tr>
+    <tr><td>LEGISTATIVO_API_URL</td><td>URL of the monitor_legistativo service</td></tr>
+    <tr><td>SENADORES_API_URL</td><td>URL of the senadores service</td></tr>
+    <tr><td>CONTRATOS_AR_API_URL</td><td>URL of monitor_contratos_v2</td></tr>
+    <tr><td>TGN_AR_API_URL</td><td>URL of gob_bo_comprar_tgn</td></tr>
+    <tr><td>COMPRAR_HIST_URL</td><td>COMPR.AR awards file (by default, the 2016-2026 file on datos.gob.ar)</td></tr>
+    <tr><td>COMPRAR_EJERCICIOS / COMPRAR_MIN_PROC</td><td>Fiscal years used (2) and minimum procedures per body (20)</td></tr>
+    <tr><td>REFRESH_TOKEN</td><td>Token for <code>POST /refresh</code> and <code>/reset-db</code> (required: without it both are disabled)</td></tr>
+  </table>
+
+  <h2>&#x1F4CB; API endpoints</h2>
+  <table class="manual-table">
+    <tr><th>Endpoint</th><th>Description</th></tr>
+    <tr><td>GET /</td><td>Redirects to /dashboard</td></tr>
+    <tr><td>GET /dashboard</td><td>This dashboard</td></tr>
+    <tr><td>GET /datos</td><td>Full dataset as JSON</td></tr>
+    <tr><td>GET /por-area/{area}</td><td>Bodies filtered by area</td></tr>
+    <tr><td>GET /top-riesgo?n=10</td><td>Top N bodies by IRI</td></tr>
+    <tr><td>GET /resumen</td><td>Global statistics by area</td></tr>
+    <tr><td>POST /refresh</td><td>Regenerates the CSV (requires <code>X-Refresh-Token</code>)</td></tr>
+    <tr><td>GET /docs</td><td>Swagger UI</td></tr>
+  </table>
+
+  <div id="relaciones-en">
+  <h2>🕸️ How this site connects to the rest of the ecosystem</h2>
+  <p>This site is part of the <strong>Transparency Ecosystem</strong>: eleven monitors that query each other. Below, which sites it exchanges data with (<em>uses →</em> = takes data from that site; <em>← used by</em> = that site takes data from this one) and which official sources feed it. The graph is interactive: click any site to see its profile.</p>
+  <iframe src="https://mapa.ecosistematransparencia.com.ar/grafo?embed=1&amp;nodo=monitor&amp;lang=en" title="How this site connects to the rest of the ecosystem" loading="lazy"
+          style="width:100%;height:560px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+  <p style="font-size:.85em"><a href="https://mapa.ecosistematransparencia.com.ar/grafo?lang=en" target="_blank" rel="noopener">Open the full graph ↗</a></p>
+  <h3>Connections</h3>
+  <ul><li><strong>uses → Justicia</strong>: Pulls judges and vacancies for financial, operational and data risk.</li><li><strong>uses → Diputados</strong>: Pulls blocs and real HCDN KPIs.</li><li><strong>uses → Senadores</strong>: Pulls the senators roster and average participation.</li><li><strong>uses → Contratos</strong>: Pulls 2026 BORA tenders to flag agencies that buy outside COMPR.AR (“no direct-award data”). The direct-award % comes from COMPR.AR 2016-2026.</li><li><strong>← used by Vectores</strong> <em>(planned)</em>: Planned: feed the IRI R_International dimension. Not connected yet.</li><li><strong>← used by MEACI</strong> <em>(planned)</em>: Planned: contribute international alerts to the IRI. Not connected yet.</li><li><strong>← used by Mapa</strong>: Shows the global IRI (proxy /iri/*) and site status. The daily cross-validation checks the year of its procurement risk data.</li></ul>
+  <h3>Official sources</h3>
+  <ul><li>Judiciary (judges, vacancies)</li><li>Deputies (blocs, HCDN KPIs)</li><li>Senators (roster, participation)</li><li>COMPR.AR — 2016-2026 awards (datos.gob.ar)</li><li>Contracts (2026 BORA tenders)</li></ul>
+  <p style="font-size:.85em">Every connection in detail, and how figures are cross-checked between sites: <a href="https://mapa.ecosistematransparencia.com.ar/en/manual#conexiones" target="_blank" rel="noopener">mapa.ecosistematransparencia.com.ar/en/manual#conexiones</a></p>
+</div>
+
+      <p style="margin-top:1.2rem;color:#64748b"><b>Academic tool.</b> The scores are algorithmic indicators based on public data: they imply no value judgment, accusation or finding of responsibility about any body or person.</p>
+</div>
 
 </div>
 </div><!-- /#page-manual -->
@@ -897,8 +1038,13 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   function badgeClass(estado) {
     if ((estado || '').includes('ALTO'))  return 'badge badge-red';
     if ((estado || '').includes('MEDIO')) return 'badge badge-amber';
+    if ((estado || '').includes('SIN DATOS')) return 'badge badge-gray';
     return 'badge badge-green';
   }
+
+  // IRI vacío (ningún componente medido, p. ej. compra fuera de COMPR.AR) → -1
+  // para ordenarlo al final; nunca se muestra ni se grafica como 0.
+  const iriNum = d => (d['IRI (Score)'] === '' || d['IRI (Score)'] == null || isNaN(+d['IRI (Score)'])) ? -1 : +d['IRI (Score)'];
 
   function iriColor(v) {
     if (v >= 60) return '#f87171';
@@ -914,6 +1060,8 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     if (f.includes('monitor_contratos_v2/tgn'))             return '✅ TGN (contratos)';
     if (f.includes('monitor_contratos_v2/flujo'))           return '✅ BORA+COMPR.AR+TGN';
     if (f.includes('monitor_contratos_v2'))                 return '✅ Contratos';
+    if (f.includes('fuera de COMPR.AR'))                    return '⚪ BORA (fuera de COMPR.AR)';
+    if (f.includes('monitor_contratos') && f.includes('COMPR.AR')) return '✅ COMPR.AR';
     if (f.includes('gob_bo_comprar_tgn'))                   return '✅ TGN';
     if (f.includes('senadores') && f.includes('nomina'))    return '✅ Senado (nómina)';
     if (f.includes('senadores') && f.includes('partido'))   return '✅ Senado (partidos)';
@@ -931,14 +1079,23 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
       : (+v).toFixed(0);
   }
 
+  // Idioma del manual (ES/EN); se recuerda en el navegador si se puede
+  function setManualLang(lang) {
+    document.getElementById('manual-es').style.display = lang === 'en' ? 'none' : '';
+    document.getElementById('manual-en').style.display = lang === 'en' ? '' : 'none';
+    document.querySelectorAll('.manual-lang').forEach(b => b.classList.toggle('activo', b.dataset.lang === lang));
+    try { localStorage.setItem('manualLang', lang); } catch (e) {}
+  }
+  try { if (localStorage.getItem('manualLang') === 'en' || new URLSearchParams(location.search).get('lang') === 'en') setManualLang('en'); } catch (e) {}
+
   function renderTable() {
-    const rows = filterData().sort((a,b) => b['IRI (Score)'] - a['IRI (Score)']);
+    const rows = filterData().sort((a,b) => iriNum(b) - iriNum(a));
     document.getElementById('table-body').innerHTML = rows.map(d => `
       <tr>
         <td><span class="${badgeClass(d.Estado)}">${d.Estado || '-'}</span></td>
         <td><b>${d.Organismo}</b></td>
         <td style="color:#94a3b8">${d.Area}</td>
-        <td style="color:${iriColor(+d['IRI (Score)'])};font-weight:700;font-size:1rem">${(+d['IRI (Score)']).toFixed(1)}</td>
+        <td style="color:${iriNum(d) < 0 ? '#64748b' : iriColor(iriNum(d))};font-weight:700;font-size:1rem">${iriNum(d) < 0 ? sd('') : iriNum(d).toFixed(1)}</td>
         <td>${sd(d['Riesgo Financiero'])}</td>
         <td>${sd(d['Riesgo Contratación'])}</td>
         <td>${sd(d['Riesgo Operativo'])}</td>
@@ -950,7 +1107,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   }
 
   function renderMainBar(data) {
-    const top = [...data].sort((a,b) => b['IRI (Score)'] - a['IRI (Score)']).slice(0,30).reverse();
+    const top = data.filter(d => iriNum(d) >= 0).sort((a,b) => iriNum(b) - iriNum(a)).slice(0,30).reverse();
     const colors = top.map(d => (d.Estado||'').includes('ALTO') ? '#f87171' : (d.Estado||'').includes('MEDIO') ? '#fbbf24' : '#4ade80');
     Plotly.react('chart-main', [{
       type: 'bar', orientation: 'h',
