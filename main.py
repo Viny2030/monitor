@@ -790,7 +790,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <span><b style="color:#4ade80">●</b> Proveedor de un organismo</span>
     <span><b style="color:#fbbf24">●</b> Proveedor de varios organismos del grafo</span>
     <span><b style="color:#f87171">—</b> Vínculo con contratación directa</span>
-    <span>Grosor: monto del vínculo</span>
+    <span>Cada nodo lleva el nombre del organismo o del proveedor · Grosor: monto del vínculo</span>
   </div>
   <div class="grafo-layout">
     <div id="g-canvas" class="grafo-canvas"><div id="loader">Cargando…</div></div>
@@ -859,6 +859,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <p>La pestaña <b>Grafo</b> muestra, para cada organismo con porcentaje de directas calculado, sus <b>principales proveedores por monto</b> en COMPR.AR durante los mismos dos ejercicios del riesgo de contratación. Cada <b>cuadrado azul</b> es un organismo y cada <b>círculo</b> es un proveedor (CUIT).</p>
   <ul>
     <li><b>Proveedores por organismo:</b> se eligen 3, 5 o 10 principales. Con más proveedores aparecen más vínculos compartidos, pero el grafo se vuelve más denso.</li>
+    <li><b>Nombres:</b> cada nodo lleva el nombre del organismo o la razón social del proveedor; los proveedores compartidos se escriben más grandes. Con el zoom se leen los demás.</li>
     <li><b>Colores:</b> verde, si el proveedor está entre los principales de un solo organismo; amarillo, si lo está en varios. La línea es roja cuando al menos un procedimiento del vínculo fue una contratación directa.</li>
     <li><b>Tamaños:</b> el cuadrado crece con el monto adjudicado del organismo y la línea, con el monto del vínculo.</li>
     <li><b>Panel de detalle:</b> en un organismo muestra sus procedimientos, sus proveedores distintos y la parte del monto que se lleva el principal (el mismo dato que la columna <i>Fuente</i>). En un proveedor muestra con cuántos organismos del grafo aparece y a cuántos organismos les vendió en total, y enlaza a sus avisos 2026 en el sitio Contratos.</li>
@@ -967,6 +968,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <p>The <b>Grafo (Graph)</b> tab shows, for each body with a computed direct-contracting percentage, its <b>main suppliers by amount</b> in COMPR.AR over the same two fiscal years used for procurement risk. Each <b>blue square</b> is a body and each <b>circle</b> is a supplier (CUIT tax ID).</p>
   <ul>
     <li><b>Suppliers per body:</b> choose the top 3, 5 or 10. More suppliers reveal more shared links but make the graph denser.</li>
+    <li><b>Names:</b> every node carries the body's name or the supplier's registered name; shared suppliers are written larger. Zoom in to read the rest.</li>
     <li><b>Colours:</b> green when the supplier is among the main suppliers of a single body, yellow when it is among those of several. A line is red when at least one procedure in that link was a direct award.</li>
     <li><b>Sizes:</b> a square grows with the body's awarded amount, and a line grows with the amount of that link.</li>
     <li><b>Detail panel:</b> for a body it shows its procedures, its distinct suppliers and the share of the amount that goes to the main supplier (the same figure as the <i>Fuente</i> column). For a supplier it shows how many bodies in the graph it appears with and how many bodies it sold to in total, and it links to the supplier's 2026 notices on the Contratos site.</li>
@@ -1217,10 +1219,10 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
                  font: { color: '#e2e8f0', size: 12 } };
       }
       const comp = n.organismos_en_grafo > 1;
-      return { id: n.id, label: comp ? n.label.slice(0, 22) : '', shape: 'dot',
+      return { id: n.id, label: n.label.length > 26 ? n.label.slice(0, 25) + '…' : n.label, shape: 'dot',
                size: comp ? 6 + 3 * Math.min(n.organismos_en_grafo, 8) : 6,
                color: { background: comp ? '#fbbf24' : '#4ade80', border: comp ? '#fbbf24' : '#4ade80' },
-               font: { color: '#94a3b8', size: 10 } };
+               font: { color: comp ? '#e2e8f0' : '#94a3b8', size: comp ? 12 : 9 } };
     });
     const aristas = d.aristas.map(a => ({ from: a.from, to: a.to, width: 1 + 6 * Math.sqrt(a.monto / maxA),
       color: { color: a.directas > 0 ? '#f87171' : '#475569', opacity: 0.8 } }));
