@@ -914,6 +914,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
 
+<div id="funcionamiento">
+  <h2>⚙️ Cómo funciona este sitio</h2>
+  <p>De qué fuentes toma los datos, qué procesos automáticos los transforman, dónde se guardan y qué publica. Cada nodo lleva su nombre; hacé clic en uno para ver de dónde recibe datos y a qué alimenta. Es el grafo de <strong>funcionamiento</strong>; el grafo de <strong>información</strong> (los datos del sitio) está en la pestaña Grafo.</p>
+  <iframe class="grafo-func" src="https://mapa.ecosistematransparencia.com.ar/funcionamiento?sitio=monitor&amp;embed=1" title="Cómo funciona este sitio" loading="lazy"
+          style="width:100%;height:640px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+  <p style="font-size:.85em"><a href="https://mapa.ecosistematransparencia.com.ar/funcionamiento?sitio=monitor" target="_blank" rel="noopener">Abrir en pantalla completa ↗</a></p>
+</div>
+
   <div id="relaciones">
   <h2>🕸️ Relación con los otros sitios del ecosistema</h2>
   <p>Este sitio es parte del <strong>Ecosistema de Transparencia</strong>: once monitores que se consultan entre sí. Abajo, con qué sitios intercambia datos (<em>usa →</em> = toma datos de ese sitio; <em>← lo usa</em> = ese sitio toma datos de este) y de qué fuentes oficiales se alimenta. El grafo es interactivo: hacé clic en cualquier sitio para ver su ficha.</p>
@@ -1022,6 +1030,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     <tr><td>POST /refresh</td><td>Regenerates the CSV (requires <code>X-Refresh-Token</code>)</td></tr>
     <tr><td>GET /docs</td><td>Swagger UI</td></tr>
   </table>
+
+<div id="funcionamiento-en">
+  <h2>⚙️ How this site works</h2>
+  <p>Where the site gets its data, which automated processes transform it, where it is stored and what it publishes. Every node carries its name; click one to see where it gets data from and what it feeds. This is the <strong>workflow</strong> graph; the <strong>information</strong> graph (the site's own data) is in the Grafo (Graph) tab.</p>
+  <iframe class="grafo-func" src="https://mapa.ecosistematransparencia.com.ar/funcionamiento?sitio=monitor&amp;embed=1&amp;lang=en" title="How this site works" loading="lazy"
+          style="width:100%;height:640px;border:1px solid #cbd5e1;border-radius:10px;background:#fff"></iframe>
+  <p style="font-size:.85em"><a href="https://mapa.ecosistematransparencia.com.ar/funcionamiento?sitio=monitor&amp;lang=en" target="_blank" rel="noopener">Open full screen ↗</a></p>
+</div>
 
   <div id="relaciones-en">
   <h2>🕸️ How this site connects to the rest of the ecosystem</h2>
@@ -1258,6 +1274,14 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
     GRAFO.red.focus(id, { scale: 1.3, animation: true });
     infoGrafo(id);
   }
+
+// Ajusta el alto de los grafos de funcionamiento incrustados (los informa el Mapa).
+window.addEventListener('message', e => {
+  if (e.origin !== 'https://mapa.ecosistematransparencia.com.ar' || !e.data || !e.data.grafoAltura) return;
+  document.querySelectorAll('iframe.grafo-func').forEach(f => {
+    if (f.contentWindow === e.source) f.style.height = (e.data.grafoAltura + 4) + 'px';
+  });
+});
 
   function showPage(name, btn) {
     document.querySelectorAll('.tab-page').forEach(p => p.classList.remove('active'));
