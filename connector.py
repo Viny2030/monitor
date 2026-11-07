@@ -22,6 +22,7 @@ Variables de entorno:
   TGN_AR_API_URL        ← gob_bo_comprar_tgn en Railway (Tesorería General de la Nación AR)
 """
 
+import json
 import os
 import re
 import logging
@@ -722,6 +723,88 @@ def _concentracion_proveedor(filas: pd.DataFrame) -> float | None:
     return round(por_prov.max() / total * 100, 1) if total > 0 else None
 
 
+GRAFO_PATH = os.getenv("GRAFO_PATH", "data/processed/grafo_comprar.json")
+GRAFO_TOP = 10  # proveedores por organismo que se guardan; la API muestra hasta este número
+
+
+def _grafo_comprar(df: pd.DataFrame, nombres: pd.Series, safs: list, periodo: str) -> dict | None:
+    """
+    Red organismo ↔ proveedor de COMPR.AR para la pestaña Grafo.
+
+    `df` son las adjudicaciones de los ejercicios usados para el riesgo (una fila
+    por procedimiento y proveedor, con _saf). Se toman solo los organismos con
+    % de directas calculado (`safs`) y los montos en pesos. Por organismo se
+    guardan sus GRAFO_TOP principales proveedores por monto; de cada proveedor
+    se cuenta además con cuántos de esos organismos trabaja en total (no solo
+    entre los principales). Todo es informativo: nada de esto entra en el IRI.
+    """
+    if "CUIT" not in df or "Monto" not in df or not safs:
+        return None
+    d = df[df["_saf"].isin(safs)].copy()
+    if "Moneda" in d:
+        d = d[d["Moneda"].astype(str).str.contains("peso", case=False, na=False)]
+    d["CUIT"] = d["CUIT"].astype(str).str.strip()
+    d = d[d["CUIT"].str.replace(r"\D", "", regex=True).str.len() == 11]
+    if d.empty:
+        return None
+    d["_monto"] = pd.to_numeric(d["Monto"], errors="coerce").fillna(0.0)
+    d["_directa"] = (d["Tipo_de_Procedimiento"].map(_arreglar_texto)
+                     .str.upper().str.contains("DIRECT", na=False))
+    col_nom = "Descripcion_Proveedor" if "Descripcion_Proveedor" in d else None
+
+    pares = d.groupby(["_saf", "CUIT"]).agg(
+        monto=("_monto", "sum"), procesos=("Numero_Proceso", "nunique")).reset_index()
+    directas = (d[d["_directa"]].groupby(["_saf", "CUIT"])["Numero_Proceso"].nunique()
+                .rename("directas"))
+    pares = pares.join(directas, on=["_saf", "CUIT"]).fillna({"directas": 0})
+    org_por_prov = pares.groupby("CUIT")["_saf"].nunique()
+    pares = pares.sort_values(["_saf", "monto"], ascending=[True, False])
+    pares["rango"] = pares.groupby("_saf").cumcount() + 1
+    top = pares[pares["rango"] <= GRAFO_TOP]
+
+    nodos = []
+    for saf, g in pares.groupby("_saf"):
+        total = g["monto"].sum()
+        nodos.append({
+            "id": f"o:{saf}", "tipo": "organismo", "label": str(nombres.get(saf, saf))[:80],
+            "monto": float(total), "proveedores": int(len(g)),
+            "procesos": int(d.loc[d["_saf"] == saf, "Numero_Proceso"].nunique()),
+            "concentracion": round(float(g["monto"].max() / total) * 100, 1) if total > 0 else None,
+        })
+    for cuit, g in top.groupby("CUIT"):
+        nombre = cuit
+        if col_nom:
+            ns = d.loc[d["CUIT"] == cuit, col_nom].dropna().astype(str).str.strip()
+            if len(ns):
+                nombre = ns.value_counts().index[0]
+        nodos.append({
+            "id": f"p:{cuit}", "tipo": "proveedor", "label": _arreglar_texto(nombre)[:60], "cuit": cuit,
+            "organismos_total": int(org_por_prov[cuit]),
+        })
+    cols = ["_saf", "CUIT", "rango", "monto", "procesos", "directas"]
+    aristas = [{"from": f"o:{saf}", "to": f"p:{cuit}", "rango": int(rango), "monto": float(monto),
+                "procesos": int(procesos), "directas": int(directas)}
+               for saf, cuit, rango, monto, procesos, directas in top[cols].itertuples(index=False, name=None)]
+    return {
+        "formato": "grafo/1", "fuente": "COMPR.AR Adjudicaciones (datos.gob.ar 4.22)",
+        "periodo": periodo, "generado": _dt.datetime.now().isoformat(timespec="seconds"),
+        "top_guardado": GRAFO_TOP, "nodos": nodos, "aristas": aristas,
+    }
+
+
+def _guardar_grafo(grafo: dict | None) -> None:
+    if not grafo:
+        return
+    try:
+        os.makedirs(os.path.dirname(GRAFO_PATH) or ".", exist_ok=True)
+        with open(GRAFO_PATH, "w", encoding="utf-8") as f:
+            json.dump(grafo, f, ensure_ascii=False)
+        log.info(f"  grafo COMPR.AR: {sum(n['tipo'] == 'organismo' for n in grafo['nodos'])} organismos, "
+                 f"{len(grafo['aristas'])} vínculos → {GRAFO_PATH}")
+    except Exception as e:
+        log.warning(f"  grafo COMPR.AR: no se pudo guardar ({e})")
+
+
 def _organismos_comprar(actividad: dict, area: str = "Administración Central") -> list[dict]:
     """
     Riesgo de contratación por organismo, en dos capas:
@@ -784,6 +867,12 @@ def _organismos_comprar(actividad: dict, area: str = "Administración Central") 
             "IRI (Score)": _iri(None, r_con, None, None),
             "Fuente": fuente,
         })
+
+    try:
+        safs_con_dato = [saf for saf, grp in procs.groupby("_saf") if len(grp) >= COMPRAR_MIN_PROC]
+        _guardar_grafo(_grafo_comprar(df, nombres, safs_con_dato, periodo))
+    except Exception as e:  # el grafo es accesorio: nunca debe tumbar el riesgo
+        log.warning(f"  grafo COMPR.AR: no se pudo calcular ({e})")
 
     # Control cruzado: licitan en el BORA y no figuran en COMPR.AR
     for org, act in sorted(actividad.items(), key=lambda kv: -kv[1]["licitaciones"]):
