@@ -510,6 +510,37 @@ def _filtrar_grafo(g: dict, top: int, solo_compartidos: bool) -> dict:
     }
 
 
+@app.get("/frescura.js", include_in_schema=False)
+def frescura_js():
+    from fastapi.responses import FileResponse
+    return FileResponse("frescura.js", media_type="application/javascript")
+
+
+@app.get("/api/frescura")
+def frescura():
+    """Ficha de frescura (formato común del ecosistema, ver frescura.py): de
+    dónde sale cada dato, qué período cubre, cuándo se cargó y si está atrasado."""
+    import json
+    from frescura import evaluar
+
+    generado = _fecha_datos()
+    grafo = {}
+    try:
+        with open(GRAFO_PATH, encoding="utf-8") as f:
+            grafo = json.load(f)
+    except Exception:
+        pass  # sin grafo guardado, la fila queda sin fecha de carga y avisa como alarma técnica
+    return evaluar("monitor", [
+        {"id": "iri", "dato": "Índice de riesgo (IRI) por organismo",
+         "fuente": "Justicia · Legislativo · Senadores · COMPR.AR", "periodo": f"generado el {str(generado)[:10]}",
+         "periodo_fin": generado, "ultima_carga": generado, "frecuencia": "diaria",
+         "max_dias_carga": 3, "max_dias_periodo": 3},
+        {"id": "comprar", "dato": "Riesgo de contratación y grafo de proveedores", "fuente": "COMPR.AR (datos.gob.ar)",
+         "periodo": f"ejercicios {grafo['periodo']}" if grafo.get("periodo") else "sin dato",
+         "ultima_carga": grafo.get("generado"), "frecuencia": "diaria", "max_dias_carga": 3},
+    ])
+
+
 @app.get("/grafo")
 def get_grafo(top: int = Query(5, ge=1, le=10), solo_compartidos: bool = False):
     """Red organismo ↔ principales proveedores (COMPR.AR, últimos ejercicios)."""
@@ -661,6 +692,7 @@ DASHBOARD_HTML = r"""<!DOCTYPE html>
   <button id="refresh-btn" onclick="loadAll()">&#x21BA; Actualizar</button>
   <span id="status"></span>
 </header>
+<div id="frescura-ficha" data-api="/api/frescura" style="padding:0 1rem"></div>
 
 <div class="aviso-banner">
   <span>&#x26A0;&#xFE0F;</span>
@@ -1522,6 +1554,7 @@ window.addEventListener('message', e => {
   loadAll();
   setInterval(loadAll, 300000);
 </script>
+<script src="/frescura.js" defer></script>
 </body>
 </html>"""
 
