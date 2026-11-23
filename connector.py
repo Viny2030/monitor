@@ -695,7 +695,7 @@ def _leer_comprar_hist() -> pd.DataFrame | None:
         r = requests.get(COMPRAR_HIST_URL, headers=HEADERS, timeout=300)
         r.raise_for_status()
         df = pd.read_csv(StringIO(r.content.decode("utf-8-sig", errors="replace")),
-                         low_memory=False, dtype=str)
+                         sep=";", low_memory=False, dtype=str)
     except Exception as e:
         log.warning(f"  COMPR.AR: no se pudo descargar ({e})")
         return None
