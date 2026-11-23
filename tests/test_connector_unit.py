@@ -238,11 +238,15 @@ def test_organismos_comprar_dos_capas(monkeypatch):
     """% de directas solo desde COMPR.AR (últimos ejercicios, mínimo de
     procedimientos) y "sin dato" para quien licita en el BORA fuera de COMPR.AR."""
     import connector as c
-    filas = ["Numero_Proceso,Descripcion_SAF,Tipo_de_Procedimiento,Ejercicio,CUIT,Monto,Moneda"]
+    filas = ["Numero_Proceso;Descripcion_SAF;Tipo_de_Procedimiento;Ejercicio;CUIT;Monto;Moneda"]
     # Gendarmería: 30 procedimientos 2025-2026, 24 directas; uno de 2019 que no cuenta
     for i in range(30):
         tipo = "Contratación Directa" if i < 24 else "Licitacion Pública"
-        filas.append(f"G{i},375 - Gendarmeria Nacional,{tipo},{2025 + i % 2},30-1-{i % 3},100,Peso Argentino")
+        filas.append(f"G{i};375 - Gendarmeria Nacional;{tipo};{2025 + i % 2};30-1-{i % 3};100;Peso Argentino")
+    filas.append("G99;375 - Gendarmeria Nacional;Licitacion Pública;2019;30-1-0;100;Peso Argentino")
+    # Organismo chico: 5 procedimientos, queda afuera por el mínimo
+    for i in range(5):
+        filas.append(f"T{i};113 - Teatro Nacional Cervantes;Contratación Directa;2026;30-2-0;10;Peso Argentino")
     filas.append("G99,375 - Gendarmeria Nacional,Licitacion Pública,2019,30-1-0,100,Peso Argentino")
     # Organismo chico: 5 procedimientos, queda afuera por el mínimo
     for i in range(5):
